@@ -1,3 +1,4 @@
+#IMPORTS
 import numpy as np, math
 import scipy.sparse as sp, scipy.sparse.linalg as spla
 import pandas as pd
@@ -5,8 +6,9 @@ import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import tensorflow as tf
-import tensorflow.keras as keras
+import tensorflow as keras
 from sklearn.model_selection import train_test_split
+
 #  CARREGGAR O .CSV
 dataset = pd.read_csv("dataset_nu_Uvec_step0p002_full.csv") # careregamento do csv(dataset)
 print(dataset.head())# amostra as primeiras linhas do dataset
@@ -34,6 +36,7 @@ y_train_n = (y_train - y_mean) / y_std  # normalização dos dados de saída par
 y_validation_n = (y_validation - y_mean) / y_std
 y_test_n = (y_test - y_mean) / y_std
 
+print("\n--------------------------------\n")
 print('Tabela de Entradas:\n' + str(X.shape) + '\nTabela de Saidas\n' + str(y.shape)) # verificação do formato dos arrays de entrada e saída
 
 #TREINAMENTO DO MODELO
@@ -51,6 +54,7 @@ model = tf.keras.Sequential([
 
 model.compile(optimizer='adam', loss='mse', metrics=['mae'])
 
+# RESUMO DO MODELO
 model.summary()
 
 # CALLBACKS(para evitar treinar atoa)
@@ -82,6 +86,7 @@ abs_err = np.abs(y_pred - y_true)
 with np.errstate(divide='ignore', invalid='ignore'):
     rel_err = np.where(np.abs(y_true) > 1e-12, abs_err/np.abs(y_true), 0.0)
 
+# CÁLCULO DAS MÉTRICAS DE DESEMPENHO
 MAE  = abs_err.mean()
 MRE  = 100.0 * rel_err.mean()
 MaxE = abs_err.max()
@@ -107,40 +112,41 @@ def show_vectors(i):
     print(f"\n=== Amostra {i} | nu = {nu_val:.6f} ===")
     print(comp.to_string())
 
+    # PLOTAGEM DOS MAPAS 5x5()
     # mapas 5x5
-    t5 = u_true.reshape(5,5)
-    p5 = u_pred.reshape(5,5)
-    e5 = (p5 - t5)
+    # t5 = u_true.reshape(5,5)
+    # p5 = u_pred.reshape(5,5)
+    # e5 = (p5 - t5)
 
-    fig, axs = plt.subplots(1,3, figsize=(10,3))
-    im0 = axs[0].imshow(t5, origin="lower"); axs[0].set_title("True");  plt.colorbar(im0, ax=axs[0])
-    im1 = axs[1].imshow(p5, origin="lower"); axs[1].set_title("Pred");  plt.colorbar(im1, ax=axs[1])
-    im2 = axs[2].imshow(e5, origin="lower", cmap="seismic"); axs[2].set_title("Error"); plt.colorbar(im2, ax=axs[2])
-    plt.suptitle(f"nu={nu_val:.6f} — True vs Pred vs Error")
-    plt.tight_layout(); plt.show()
+    # fig, axs = plt.subplots(1,3, figsize=(10,3))
+    # im0 = axs[0].imshow(t5, origin="lower"); axs[0].set_title("True");  plt.colorbar(im0, ax=axs[0])
+    # im1 = axs[1].imshow(p5, origin="lower"); axs[1].set_title("Pred");  plt.colorbar(im1, ax=axs[1])
+    # im2 = axs[2].imshow(e5, origin="lower", cmap="seismic"); axs[2].set_title("Error"); plt.colorbar(im2, ax=axs[2])
+    # plt.suptitle(f"nu={nu_val:.6f} — True vs Pred vs Error")
+    # plt.tight_layout(); plt.show()
 
-# ===== Escolha quais amostras mostrar =====
-# 1) A primeira amostra do teste
+# MOSTRAR O PRIMEIRO U_vec()
 show_vectors(0)
 
-# 2) As 3 piores (maior MAE por amostra)
+# MOSTRAR AS 3 PIORES PREVISÕES()
 mae_per_sample = np.mean(np.abs(y_pred - y_true), axis=1)   # (N_test,)
 worst_idx = np.argsort(mae_per_sample)[-3:]
 for i in worst_idx:
     show_vectors(int(i))
 
-# 3) (Opcional) As 3 melhores
+# MOSTRAR AS 3 MELHORES PREVISÕES()
 best_idx = np.argsort(mae_per_sample)[:3]
 for i in best_idx:
     show_vectors(int(i))
 
-# PLOTS RÁPIDOS
-plt.figure()
-plt.plot(history.history["loss"], label="train")
-plt.plot(history.history["val_loss"], label="val")
-plt.xlabel("Epoch"); plt.ylabel("MSE (norm)"); plt.legend(); plt.title("Curva de treino")
-plt.tight_layout(); plt.show()
+# PLOT CURVA DE TREINO()
+# plt.figure()
+# plt.plot(history.history["loss"], label="train")
+# plt.plot(history.history["val_loss"], label="val")
+# plt.xlabel("Epoch"); plt.ylabel("MSE (norm)"); plt.legend(); plt.title("Curva de treino")
+# plt.tight_layout(); plt.show()
 
+# ANÁLISE DE ACURÁCIA COM BASE EM TOLERÂNCIAS
 TOL_ABS = 0.01   # ajuste conforme a escala do seu U (ex.: 0.01 = 1e-2)
 TOL_REL = 0.05   # 5% de erro relativo
 SAMPLE_FRAC_OK = 0.90  # amostra é "correta" se >=90% das 25 células estão dentro da tolerância
@@ -155,5 +161,6 @@ acc_cells = ok.mean()  # em [0,1]
 # Acurácia por amostra: fração de amostras com >= SAMPLE_FRAC_OK células corretas
 acc_per_sample = (ok.mean(axis=1) >= SAMPLE_FRAC_OK).mean()
 
-print(f"Acurácia por célula (tolerância): {100*acc_cells:.2f}%")
-print(f"Acurácia por amostra (≥{int(SAMPLE_FRAC_OK*100)}% células ok): {100*acc_per_sample:.2f}%")
+print("\n----------------ANALISE DE TOLERANCIAS----------------\n")
+print(f"Acurácia por célula (tolerância): {100 * acc_cells:.2f}%")
+print(f"Acurácia por amostra (≥{int(SAMPLE_FRAC_OK * 100)}% células ok): {100 * acc_per_sample:.2f}%")
