@@ -10,7 +10,7 @@ import tensorflow as keras
 from sklearn.model_selection import train_test_split
 
 #  CARREGGAR O .CSV
-dataset = pd.read_csv("dataset_nu_Uvec_step0p002_full.csv") # careregamento do csv(dataset)
+dataset = pd.read_csv("dataset_nu_Uvec_analitico.csv") # careregamento do csv(dataset)
 print(dataset.head())# amostra as primeiras linhas do dataset
 
 X = dataset[['nu']].to_numpy('float32') # entradas da rede
