@@ -12,8 +12,8 @@ arquivo_saida = "dataset_nu_Uvec_analitico.csv"
 
 # ===================== FUNÇÃO ANALÍTICA =====================
 # def T_exact(x, y, t, nu_val):
-    # Função base ajustada para depender linearmente de ν=nu.
-    # return nu_val * math.tanh(t) * (math.sin(math.pi * x) + math.cos(math.pi * y))
+    #Função base ajustada para depender linearmente de ν=nu.
+   # return nu_val * math.tanh(t) * (math.sin(math.pi * x) + math.cos(math.pi * y))
     # correção aqui antes nao tinha a multiplicação por nu_val
 
 # Vetoriza a função para operar em arrays numpy
