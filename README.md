@@ -13,8 +13,18 @@ A ideia central é substituir (ou complementar) simulações numéricas demorada
 - Avaliar o desempenho do modelo em termos de **erro de predição** e **tempo de inferência**, comparando com o modelo convencional.
 - Criar uma base de código organizada para ser reutilizada/extendida em trabalhos futuros.
 
----## 📂 Estrutura do Repositório
-
+---
+## 📂 Estrutura do Repositório
+```text
+├── data/
+│   ├── raw/           # Dados brutos (CSV etc.)
+│   ├── processed/     # Dados já tratados/normalizados
+├── models/
+│   ├── saved/         # Modelos treinados (.h5, .keras, .pb...)
+├── notebooks/         # Notebooks de exploração e testes
+├── src/
+├── README.md
+├── requirements.txt   # Dependências do projeto
 
 
 
