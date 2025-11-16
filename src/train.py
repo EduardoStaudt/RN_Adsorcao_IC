@@ -158,10 +158,30 @@ model = NeuralNetwork(best_hp) # CONSTRUÇÃO DO MODELO COM OS MELHORES HIPERPAR
 # =======================================================
 # 4. Treinamento final
 # =======================================================
+
+# Caminho pra salvar o melhor modelo
+MODELS_DIR = BASE_DIR.parent / "models"
+MODELS_DIR.mkdir(exist_ok=True)
+
+ckpt_path = MODELS_DIR / "best_model.keras"
+
+checkpoint_cb = tf.keras.callbacks.ModelCheckpoint(
+    filepath=str(ckpt_path),
+    monitor='val_loss',
+    save_best_only=True,
+    save_weights_only=False
+)
+
 callbacks = [
+    checkpoint_cb,
+    #  REDUZ PELA METADE O LEARNING RATE SE A VAL_LOSS NÃO MELHORAR EM 12 ÉPOCAS
     tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=12, min_lr=1e-6),
+    # PARA O TREINAMENTO SE A VAL_LOSS NÃO MELHORAR EM 30 ÉPOCAS
     tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=30, restore_best_weights=True)
 ]
+# loss ↓ e val_loss ↓ - aprendendo bem.
+
+# loss ↓ mas val_loss ↑ - a rede começou a decorar o treino (overfitting).
 
 history = model.fit(
     X, Y,
@@ -172,20 +192,47 @@ history = model.fit(
     verbose=1
 )
 
-# # =======================================================
-# # 5. Impressão de métricas
-# # =======================================================
-# train_loss = history.history['loss'][-1]
-# val_loss = history.history['val_loss'][-1]
+# =======================================================
+# 5. Impressão de métricas
+# =======================================================
+train_loss = history.history['loss'][-1]
+val_loss = history.history['val_loss'][-1]
 
-# print("\n===== Resultados do Treinamento =====")
-# print(f"Loss final (Treino): {train_loss:.6e}")
-# print(f"Loss final (Validação): {val_loss:.6e}")
+print("\n===== Resultados do Treinamento =====")
+print(f"Loss final (Treino, espaço normalizado): {train_loss:.6e}")
+print(f"Loss final (Validação, espaço normalizado): {val_loss:.6e}")
 
-# # Cálculo de RMSE geral
-# Y_pred = model.predict(X)
-# rmse = np.sqrt(mean_squared_error(Y, Y_pred))
-# print(f"RMSE Global (Treino): {rmse:.6f}")
+# ---------- 5.1 Predição no espaço normalizado ----------
+Y_pred_norm = model.predict(X)  # modelo foi treinado com X e Y normalizados
+
+rmse_norm = np.sqrt(mean_squared_error(Y, Y_pred_norm))
+print(f"\nRMSE Global (Treino, espaço normalizado): {rmse_norm:.6f}")
+
+# ---------- 5.2 Desnormalizar para espaço físico ----------
+Y_real      = scaler_Y.inverse_transform(Y) # volta Y 
+Y_pred_real = scaler_Y.inverse_transform(Y_pred_norm) # volta Y_pred
+
+# RMSE DE TODOS AS 157 SAIDAS
+rmse_real_global = np.sqrt(mean_squared_error(Y_real, Y_pred_real))
+print(f"RMSE Global (Treino, espaço físico, todas as saídas): {rmse_real_global:.6f}")
+
+# RMSEs ESPECIFICOS
+#.index() retorna o índice da coluna especificada
+# output_cols = [C_out_final, q_out_final, T_out_final, N_ads_final, C_z0... , T_z0..., Qtot_t0...]
+idx_C_out = output_cols.index("C_out_final") 
+idx_T_out = output_cols.index("T_out_final")
+idx_N_ads = output_cols.index("N_ads_final")
+
+# CALCULO DO MSE PARA CADA SAÍDA ESPECÍFICA REAL E PREDITA
+rmse_C_out = np.sqrt(mean_squared_error(Y_real[:, idx_C_out], Y_pred_real[:, idx_C_out])) 
+rmse_T_out = np.sqrt(mean_squared_error(Y_real[:, idx_T_out], Y_pred_real[:, idx_T_out]))
+rmse_N_ads = np.sqrt(mean_squared_error(Y_real[:, idx_N_ads], Y_pred_real[:, idx_N_ads]))
+
+# PRINTs
+print("\nRMSEs em espaço físico (saídas finais):")
+print(f"C_out_final  (concentração na saída): {rmse_C_out:.6f}")
+print(f"T_out_final  (temperatura na saída):  {rmse_T_out:.6f}")
+print(f"N_ads_final  (adsorção total):       {rmse_N_ads:.6f}")
 
 # # =======================================================
 # # 6. Gráfico de curva de treinamento

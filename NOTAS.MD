@@ -6,6 +6,7 @@
 
 ## DÚVIDAS:
 1- Ver se nao fica melhor talvez fixar o Nz pra deixar a rede mais rapida.
+2- Sabe algo sobre o teste Bayesiano.
 
 ## LEMBRAR:
 [] - Explicar o eh Keras Turner

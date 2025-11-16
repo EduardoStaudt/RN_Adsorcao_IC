@@ -26,7 +26,24 @@ A ideia central é substituir (ou complementar) simulações numéricas demorada
 ├── README.md
 ├── requirements.txt   # Dependências do projeto
 
+---
+## 🧪 Principais Tecnologias
+- Python 3.11.9
+- TensorFlow / Keras
+- NumPy
+- Pandas
+- Matplotlib / Seaborn (visualização de curvas e métricas)
 
+(Opcional) Scikit-learn para normalização, divisão treino/teste etc.
+
+---
+## 🧾 Referências
+SHAFEYAN, M. et al. Título do artigo. Nome da Revista, ano, páginas.
+
+---
+## 👨‍💻 Autor
+- Eduardo Andrei Staudt – aluno de IC – Universidade Tecnológica Federal do Paraná (UTFPR)
+- Contato: edusta@alunos.utfpr.edu.br
 
 
 
