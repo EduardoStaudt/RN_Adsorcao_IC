@@ -6,6 +6,7 @@ from tensorflow.keras import layers, models, regularizers
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error
 import keras_tuner as kt
+from keras_tuner import HyperParameters as hp
 import joblib
 import matplotlib.pyplot as plt
 
@@ -55,84 +56,121 @@ print("\n============ Shapes das matrizes: ==============")
 print("X shape:", X.shape) # X shape: (93420, 22)
 print("Y shape:", Y.shape) # Y shape: (93420, 157) (4 + 51 + 51 + 51, se forem 51 pontos em cada grupo)
 print("================================================")
-# =======================================================
-scaler_X = StandardScaler().fit(X) # CALCULA A MEDIA E O DESVIO PADRAO DE CADA ENNTRADA
+
+# APLICANDO O Z-score
+scaler_X = StandardScaler().fit(X) # CALCULA A MEDIA E O DESVIO PADRAO DE CADA COLUNA
 X = scaler_X.transform(X) # (X - μ) / σ X = entrada μ = média, σ = desvio padrão
+
+scaler_Y = StandardScaler().fit(Y) # CALCULA A MEDIA E O DESVIO PADRAO DE CADA COLUNA
+Y = scaler_Y.transform(Y) # (Y - μ) / σ Y = saída μ = média, σ = desvio padrão
 
 # salvar o scaler pra usar depois na inferência
 joblib.dump(scaler_X, BASE_DIR / "scaler_input.save") # guarda o scaler
+joblib.dump(scaler_Y, BASE_DIR / "scaler_output.save") # guarda o scaler
 
-# 5) Dimensões de entrada e saída
+
+#SALVAR DIMENSOES
 input_dim = X.shape[1] # número de características de entrada
 output_dim = Y.shape[1] # 
+
+# VERIFICACAO DA NORMALIZACAO 
+print("\nChecando normalização de X (primeiras 5 features):")
+print("médias  :", X.mean(axis=0)[:5])
+print("desvios :", X.std(axis=0)[:5])
+
+print("\nChecando normalização de Y (primeiras 5 saídas):")
+print("médias  :", Y.mean(axis=0)[:5])
+print("desvios :", Y.std(axis=0)[:5])
 
 print("\n=============Dimensões para a rede:=============")
 print("input_dim:", input_dim)
 print("output_dim:", output_dim)
 print("================================================")
 
-# def build_model(hp):
-#     n1 = hp.Int('neurons_layer1', 128, 512, step=64)
-#     n2 = hp.Int('neurons_layer2', 128, 512, step=64)
-#     n3 = hp.Int('neurons_layer3', 64, 256, step=32)
 
-#     dropout_rate = hp.Float('dropout', 0.0, 0.08, step=0.02)
-#     l2_reg = hp.Choice('l2_reg', values=[1e-6, 1e-5, 1e-4])
-#     lr = hp.Choice('learning_rate', values=[1e-3, 5e-4, 1e-4])
+def NeuralNetwork():
+    N1 = hp.Int('NeuralNetwork1', 88, 528, step=44)
+    N2 = hp.Int('NeuralNetwork2', 176, 528, step=44)
+    N3 = hp.Int('NeuralNetwork3', 88, 264, step=22)
 
-#     model = models.Sequential([
-#         layers.Input(shape=(input_dim,)),
-#         layers.Dense(n1, activation='elu', kernel_regularizer=regularizers.l2(l2_reg)),
-#         layers.Dropout(dropout_rate),
-#         layers.Dense(n2, activation='elu', kernel_regularizer=regularizers.l2(l2_reg)),
-#         layers.Dropout(dropout_rate),
-#         layers.Dense(n3, activation='elu', kernel_regularizer=regularizers.l2(l2_reg)),
-#         layers.Dense(output_dim, activation='linear')
-#     ])
+    Drop = hp.Float('Dropout_Rate', 0.0, 0.8, step=0.05)
+    l2_reg = hp.Choice('l2_reg', values=[1e-6, 1e-5, 1e-4])
+    lr = hp.Choice('learning_rate', values=[1e-3, 5e-4, 1e-4])
 
-#     model.compile(
-#         optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
-#         metrics=[
-#             tf.keras.metrics.MeanAbsoluteError(name='mae'),
-#             tf.keras.metrics.MeanAbsolutePercentageError(name='mape'),
-#             tf.keras.metrics.RootMeanSquaredError(name='rmse')
-#         ],
-#         loss='mse'
-#     )
-#     return model
+    model = models.Sequential([
+        tf.keras.Input(shape=(input_dim,)), # 22 ENTRADAS
+        tf.keras.layers.Dense(N1, activation='elu', kernel_regularizer=regularizers.l2(l2_reg)),
+        layers.Dropout(Drop),
+        tf.keras.layers.Dense(N2, activation='elu', kernel_regularizer=regularizers.l2(l2_reg)),
+        layers.Dropout(Drop),
+        tf.keras.layers.Dense(N3, activation='elu', kernel_regularizer=regularizers.l2(l2_reg)),
+        tf.keras.layers.Output(output_dim, activation='linear') # 157 SAÍDAS
+    ])
+
+#def build_model(hp):
+    # n1 = hp.Int('neurons_layer1', 128, 512, step=64)
+    # n2 = hp.Int('neurons_layer2', 128, 512, step=64)
+    # n3 = hp.Int('neurons_layer3', 64, 256, step=32)
+
+    # dropout_rate = hp.Float('dropout', 0.0, 0.08, step=0.02)
+    # l2_reg = hp.Choice('l2_reg', values=[1e-6, 1e-5, 1e-4])
+    # lr = hp.Choice('learning_rate', values=[1e-3, 5e-4, 1e-4])
+
+    # model = models.Sequential([
+    #     layers.Input(shape=(input_dim,)),
+    #     layers.Dense(n1, activation='elu', kernel_regularizer=regularizers.l2(l2_reg)),
+    #     layers.Dropout(dropout_rate),
+    #     layers.Dense(n2, activation='elu', kernel_regularizer=regularizers.l2(l2_reg)),
+    #     layers.Dropout(dropout_rate),
+    #     layers.Dense(n3, activation='elu', kernel_regularizer=regularizers.l2(l2_reg)),
+    #     layers.Dense(output_dim, activation='linear')
+    # ])
+
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
+        metrics=[
+            tf.keras.metrics.MeanAbsoluteError(name='mae'),
+            tf.keras.metrics.MeanAbsolutePercentageError(name='mape'),
+            tf.keras.metrics.RootMeanSquaredError(name='rmse')
+        ],
+        loss='mse'
+    )
+    return model
 
 
-# # =======================================================
-# # 3. Otimização Bayesiana de hiperparâmetros
-# # =======================================================
-# tuner = kt.BayesianOptimization(
-#     build_model,
-#     objective='val_loss',
-#     max_trials=10,
-#     directory='tuning_logs',
-#     project_name='adsorption_model_tuning'
-# )
+# =======================================================
+# 3. Otimização Bayesiana de hiperparâmetros
+# =======================================================
+tuner = kt.BayesianOptimization(
+    NeuralNetwork, # FUNÇÃO DE CONSTRUÇÃO DO MODELO
+    objective='val_loss', # OBJETIVO MINIMIZAR O LOSS
+    max_trials= 22, # NÚMERO DE HIPERPARÂMETROS TESTADOS
+    directory='tuning_logs', # DIRETÓRIO ONDE SERÃO SALVOS OS LOGS
+    project_name='adsorption_model_tuning' # NOME DO PROJETO PARA ORGANIZAÇÃO DOS LOGS
+)
 
-# tuner.search(X, Y, validation_split=0.2, epochs=200, batch_size=512, verbose=1)
-# best_hp = tuner.get_best_hyperparameters(1)[0]
-# model = build_model(best_hp)
+tuner.search(X, Y, validation_split=0.2, epochs=200, batch_size=512, verbose=1) 
+best_hp = tuner.get_best_hyperparameters(1)[0]# COLETA DOS MELHORES HIPERPARAMETROS
 
-# # =======================================================
-# # 4. Treinamento final
-# # =======================================================
-# callbacks = [
-#     tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=12, min_lr=1e-6),
-#     tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=30, restore_best_weights=True)
-# ]
 
-# history = model.fit(
-#     X, Y,
-#     epochs=200,
-#     batch_size=512,
-#     validation_split=0.1,
-#     callbacks=callbacks,
-#     verbose=1
-# )
+model = NeuralNetwork(best_hp) # CONSTRUÇÃO DO MODELO COM OS MELHORES HIPERPARÂMETROS
+
+# =======================================================
+# 4. Treinamento final
+# =======================================================
+callbacks = [
+    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=12, min_lr=1e-6),
+    tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=30, restore_best_weights=True)
+]
+
+history = model.fit(
+    X, Y,
+    epochs=1000,
+    batch_size=512,
+    validation_split=0.1,
+    callbacks=callbacks,
+    verbose=1
+)
 
 # # =======================================================
 # # 5. Impressão de métricas
