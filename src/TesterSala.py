@@ -30,11 +30,11 @@ param_cols = [
 
 # valores "coerentes" dentro (mais ou menos) dos ranges do treino
 inputs_dict = {
-    "L": 0.5,      # entre 0.05 e 1.00
+    "L": 1,      # entre 0.05 e 1.00
     "Nz": 51,      # fixo
     "eps": 0.35,   # entre 0.20 e 0.80
-    "rho_B": 200,  # entre 50 e 500
-    "u": 0.5,      # entre 0.05 e 1.00
+    "rho_B": 70,  # entre 50 e 500
+    "u": 1.5,      # entre 0.05 e 1.00
     "D_ax": 1e-6,  # entre 1e-7 e 1e-5
     "kL": 0.01,    # entre 1e-3 e 1e-1
     "qmax": 2.5,   # entre 0.1 e 10
@@ -45,11 +45,11 @@ inputs_dict = {
     "cp_g": 1000,  # entre 800 e 1200
     "cp_s": 800,   # entre 800 e 1200
     "D_col": 0.05, # entre 0.01 e 0.50
-    "h_w": 20.0,   # entre 10 e 50
+    "h_w": 10.0,   # entre 10 e 50
     "T_wall": 300, # entre 298.15 e 318.15
-    "dH": 40000.0, # entre 25000 e 65000  (no treino era positivo)
+    "dH": -35000, # entre 25000 e 65000  (no treino era positivo)
     "dt": 0.1,     # típico: t_end/1000; você pode ajustar
-    "t_end": 100.0,
+    "t_end": 1000.0,
     "C_in": 1.0,   # entre 0.1 e 5.0
     "T_in": 300.0, # entre 298.15 e 318.15
 }
