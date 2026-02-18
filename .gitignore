@@ -1,67 +1,126 @@
-# PASTA COM OS DATA SETS
-data/**
-data/processed/adsorption/dataset_FULL.npz
-data/processed/adsorption/dataset_FULL.csv
-
-
-# CACHES DO PYTHON
+############################################################
+# Python / Build / Cache
+############################################################
 __pycache__/
 *.py[cod]
 *.pyd
 *.so
+*.dll
+
 *.egg-info/
 dist/
 build/
+pip-wheel-metadata/
 .cache/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
 
-# IMAGENS E ARQUIVOS GERADOS NA VALIDACAO E TREINAMENTO
-*.png
-*.jpg
-*.jpeg
-*.svg
-*.pdf
-metricas_*.csv
-predicoes_*.csv
-compare_*.csv
-compare_*.txt
-
-# AMBIENTES VIRTUAIS
+############################################################
+# Ambientes virtuais
+############################################################
 .venv/
 venv/
 ENV/
 env/
 
-# VS CODE / IDE
+############################################################
+# IDEs / Sistema
+############################################################
 .vscode/
 .idea/
+.DS_Store
+Thumbs.db
 
-# SAIDAS DOS TREINAMENTOS, OS E LOGS
+############################################################
+# Logs
+############################################################
+*.log
+logs/
+**/logs/
+
+############################################################
+# Saídas geradas (treino/validação)
+############################################################
 outputs/
+**/outputs/
+
+# Imagens e artefatos de inferência/treino
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.pdf
+
+# Relatórios/artefatos comuns gerados
+metricas_*.csv
+predicoes_*.csv
+compare_*.csv
+compare_*.txt
+LATEST.txt
+
+############################################################
+# Keras-Tuner / Trials (evitar poluição)
+############################################################
 tuning_logs/
 **/tuning_logs/
 **/tuner/
 **/trial_*/
 **/_misc/
-LATEST.txt
-*.log
-.DS_Store
-Thumbs.db
+oracle.json
+tuner0.json
 
-# TEMPORARIOS
-*.tmp
-*.bak
-
-# TEMPORARIOS E TRABALHOS ANTIGOS
-_trash/
-archive/
-*.zip
-
-# MODELOS E SCALERS
+############################################################
+# Modelos treinados e scalers (não versionar)
+############################################################
 models/
+**/models/
+
 *.keras
 *.h5
+*.hdf5
+*.ckpt
+*.weights.h5
+
+# scalers / dumps
 *.joblib
 *.pkl
+*.pickle
 *.save
+
+############################################################
+# Data (regra geral: não versionar raw e intermediários)
+############################################################
+data/raw/
+data/**/raw/
+
+# Se você gerar batches no processed, ignore por padrão:
+data/processed/**/dataset_batch_*.csv
+data/processed/**/batch_*.csv
+data/processed/**/mini_*.csv
+
+############################################################
+# Data (EXCEÇÕES: arquivos que DEVEM entrar no Git)
+############################################################
+# Mantém a estrutura de pastas (opcional: coloque um .gitkeep nelas)
+!data/
+!data/processed/
+!data/processed/adsorption/
+!data/processed/nu_uvec/
+
+# Dataset NU_UVEC é pequeno -> versiona
+!data/processed/nu_uvec/dataset_nu_Uvec_analitico.csv
+
+# ADSORPTION: NÃO versionar o dataset grande (vai via Drive/Release)
+data/processed/adsorption/dataset_FULL.npz
+data/processed/adsorption/dataset_FULL.csv
+
+############################################################
+# Arquivos temporários / lixo
+############################################################
+_trash/
+archive/
+
+# Zips locais (evita subir zip sem querer)
+*.zip
