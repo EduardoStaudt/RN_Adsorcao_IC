@@ -1,2 +1,64 @@
-data/
+# PASTA COM OS DATA SETS
+data/**
 
+# CACHES DO PYTHON
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+*.egg-info/
+dist/
+build/
+.cache/
+.pytest_cache/
+.mypy_cache/
+
+# IMAGENS E ARQUIVOS GERADOS NA VALIDACAO E TREINAMENTO
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.pdf
+metricas_*.csv
+predicoes_*.csv
+compare_*.csv
+compare_*.txt
+
+# AMBIENTES VIRTUAIS
+.venv/
+venv/
+ENV/
+env/
+
+# VS CODE / IDE
+.vscode/
+.idea/
+
+# SAIDAS DOS TREINAMENTOS, OS E LOGS
+outputs/
+tuning_logs/
+**/tuning_logs/
+**/tuner/
+**/trial_*/
+**/_misc/
+LATEST.txt
+*.log
+.DS_Store
+Thumbs.db
+
+# TEMPORARIOS
+*.tmp
+*.bak
+
+# TEMPORARIOS E TRABALHOS ANTIGOS
+_trash/
+archive/
+*.zip
+
+# MODELOS E SCALERS
+models/
+*.keras
+*.h5
+*.joblib
+*.pkl
+*.save
