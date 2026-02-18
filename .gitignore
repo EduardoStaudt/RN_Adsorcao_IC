@@ -1,5 +1,8 @@
 # PASTA COM OS DATA SETS
 data/**
+data/processed/adsorption/dataset_FULL.npz
+data/processed/adsorption/dataset_FULL.csv
+
 
 # CACHES DO PYTHON
 __pycache__/
