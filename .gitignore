@@ -1,126 +1,96 @@
-############################################################
-# Python / Build / Cache
-############################################################
+############################################
+# CACHES E ARTEFATOS
+############################################
 __pycache__/
 *.py[cod]
 *.pyd
 *.so
-*.dll
-
 *.egg-info/
 dist/
 build/
-pip-wheel-metadata/
 .cache/
 .pytest_cache/
 .mypy_cache/
-.ruff_cache/
 .ipynb_checkpoints/
 
-############################################################
-# Ambientes virtuais
-############################################################
+############################################
+# AMBIENTES VITUAIS
+############################################
 .venv/
 venv/
 ENV/
 env/
 
-############################################################
-# IDEs / Sistema
-############################################################
+############################################
+# IDE
+############################################
 .vscode/
 .idea/
+*.code-workspace
+
+############################################
+# OS
+############################################
 .DS_Store
 Thumbs.db
 
-############################################################
-# Logs
-############################################################
-*.log
-logs/
-**/logs/
-
-############################################################
-# Saídas geradas (treino/validação)
-############################################################
+############################################
+# OUTPUTS / LOGS / TUNING
+############################################
 outputs/
-**/outputs/
-
-# Imagens e artefatos de inferência/treino
-*.png
-*.jpg
-*.jpeg
-*.svg
-*.pdf
-
-# Relatórios/artefatos comuns gerados
-metricas_*.csv
-predicoes_*.csv
-compare_*.csv
-compare_*.txt
-LATEST.txt
-
-############################################################
-# Keras-Tuner / Trials (evitar poluição)
-############################################################
 tuning_logs/
 **/tuning_logs/
 **/tuner/
 **/trial_*/
 **/_misc/
-oracle.json
-tuner0.json
+*.log
+LATEST.txt
+TREE_clean.txt
 
-############################################################
-# Modelos treinados e scalers (não versionar)
-############################################################
+############################################
+# MODELS / SCALERS 
+############################################
 models/
-**/models/
-
 *.keras
 *.h5
-*.hdf5
-*.ckpt
-*.weights.h5
-
-# scalers / dumps
 *.joblib
 *.pkl
-*.pickle
 *.save
 
-############################################################
-# Data (regra geral: não versionar raw e intermediários)
-############################################################
+############################################
+# RESULTADOS DE TREINAMENTOS / PREDIÇÕES
+############################################
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.pdf
+metricas_*.csv
+predicoes_*.csv
+compare_*.csv
+compare_*.txt
+
+############################################
+# DATASETS
+############################################
+# raw: sempre fora do git
 data/raw/
-data/**/raw/
+data/raw/**
 
-# Se você gerar batches no processed, ignore por padrão:
-data/processed/**/dataset_batch_*.csv
-data/processed/**/batch_*.csv
-data/processed/**/mini_*.csv
-
-############################################################
-# Data (EXCEÇÕES: arquivos que DEVEM entrar no Git)
-############################################################
-# Mantém a estrutura de pastas (opcional: coloque um .gitkeep nelas)
-!data/
-!data/processed/
-!data/processed/adsorption/
-!data/processed/nu_uvec/
-
-# Dataset NU_UVEC é pequeno -> versiona
-!data/processed/nu_uvec/dataset_nu_Uvec_analitico.csv
-
-# ADSORPTION: NÃO versionar o dataset grande (vai via Drive/Release)
+# adsorption FULL: fora do git (vai via Drive)
 data/processed/adsorption/dataset_FULL.npz
 data/processed/adsorption/dataset_FULL.csv
+data/processed/adsorption/dataset_batch_*.csv # arquivos intermediários, não necessários para o reprodutibilidade
+!data/processed/nu_uvec/dataset_nu_Uvec_analitico.csv # dataset pequeno, analítico, para rede de nu_Uvec
 
-############################################################
-# Arquivos temporários / lixo
-############################################################
-_trash/
+############################################
+# ARQUIVOS VELHOS E LIXO
+############################################
 archive/
-
-# Zips locais (evita subir zip sem querer)
+_trash/
 *.zip
+
+############################################
+# PRA PODER COMITAR PASTAS SEM NADA
+############################################
+!.gitkeep
