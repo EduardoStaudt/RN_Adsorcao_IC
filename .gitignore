@@ -52,10 +52,10 @@ TREE_clean.txt
 ############################################
 models/
 *.keras
+!best_model.keras
 *.h5
 *.joblib
 *.pkl
-*.save
 
 ############################################
 # RESULTADOS DE TREINAMENTOS / PREDIÇÕES

@@ -9,3 +9,9 @@ keras-tuner>=1.4
 
 gdown>=5.2
 flet>=0.24
+
+Flask>=3.0
+flask-cors>=4.0
+
+
+
