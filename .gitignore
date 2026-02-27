@@ -50,12 +50,7 @@ TREE_clean.txt
 ############################################
 # MODELS / SCALERS 
 ############################################
-models/
-*.keras
-!best_model.keras
-*.h5
-*.joblib
-*.pkl
+
 
 ############################################
 # RESULTADOS DE TREINAMENTOS / PREDIÇÕES
