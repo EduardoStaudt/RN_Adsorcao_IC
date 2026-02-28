@@ -1,17 +1,9 @@
 # -*- coding: utf-8 -*-
-"""
-GUI (Flet) para predição do modelo de ADSORÇÃO.
-
-- 22 inputs
-- modelo retorna 208 saídas:
-  - 4 finais (mostra em texto)
-  - 4 perfis (plota)
-- paths corretos:
-  models/adsorption/...
-"""
+from __future__ import annotations
 
 import base64
 import io
+import json
 from pathlib import Path
 
 import flet as ft
@@ -19,25 +11,30 @@ import numpy as np
 import tensorflow as tf
 import joblib
 import matplotlib.pyplot as plt
-
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[2]
 
 MODEL_PATH = ROOT / "models" / "adsorption" / "best_model.keras"
 SCALER_IN_PATH = ROOT / "models" / "adsorption" / "scaler_input.save"
 SCALER_OUT_PATH = ROOT / "models" / "adsorption" / "scaler_output.save"
+META_PATH = ROOT / "models" / "adsorption" / "model_meta.json"
 
-BLOCK_SIZE = 51
+DATA_NPZ_PATH = ROOT / "data" / "processed" / "adsorption" / "dataset_FULL.npz"
+DATA_CSV_PATH = ROOT / "data" / "processed" / "adsorption" / "dataset_FULL.csv"
 
-INPUT_COLS = [
+OUT_INFER_BASE = ROOT / "outputs" / "adsorption" / "inference"
+LATEST_TXT = OUT_INFER_BASE / "LATEST.txt"
+
+BLOCK_SIZE_DEFAULT = 51
+
+PARAM_COLS_FALLBACK = [
     "L", "Nz", "eps", "rho_B", "u", "D_ax", "kL", "qmax", "b", "n",
     "lam_z", "rho_g", "cp_g", "cp_s", "D_col", "h_w", "T_wall", "dH",
     "dt", "t_end", "C_in", "T_in"
 ]
+FINAL_COLS_FALLBACK = ["C_out_final", "q_out_final", "T_out_final", "N_ads_final"]
 
-FINAL_COLS = ["C_out_final", "q_out_final", "T_out_final", "N_ads_final"]
-
-# valores padrão (baseado numa linha do seu preview)
 VALORES_PADRAO = [
     0.978, 51, 0.761, 381.785, 0.808, 0.000, 0.003, 0.136, 7.620, 1.065,
     0.772, 1.706, 1037.205, 1118.988, 0.049, 16.764, 306.493, 48910.134,
@@ -45,33 +42,73 @@ VALORES_PADRAO = [
 ]
 
 
-def gerar_grafico(x, y_true, y_pred, titulo):
-    fig, ax = plt.subplots(figsize=(4.4, 3.2))
-    ax.plot(x, y_true, label="true")
+def load_meta():
+    if META_PATH.exists():
+        meta = json.loads(META_PATH.read_text(encoding="utf-8"))
+        param_cols = meta.get("param_cols", PARAM_COLS_FALLBACK)
+        final_cols = meta.get("final_cols", FINAL_COLS_FALLBACK)
+        output_cols = meta.get("output_cols", [])
+        block_size = int(meta.get("block_size", BLOCK_SIZE_DEFAULT))
+        return param_cols, final_cols, output_cols, block_size
+    return PARAM_COLS_FALLBACK, FINAL_COLS_FALLBACK, [], BLOCK_SIZE_DEFAULT
+
+
+PARAM_COLS, FINAL_COLS, OUTPUT_COLS, BLOCK_SIZE = load_meta()
+
+if not OUTPUT_COLS:
+    OUTPUT_COLS = FINAL_COLS + (
+        [f"C_z{i}" for i in range(BLOCK_SIZE)] +
+        [f"q_z{i}" for i in range(BLOCK_SIZE)] +
+        [f"T_z{i}" for i in range(BLOCK_SIZE)] +
+        [f"Qtot_t{i}" for i in range(BLOCK_SIZE)]
+    )
+
+LABELS = {
+    "L":      "Comprimento Leito L (m)",
+    "Nz":     "Malha Nz (-)",
+    "eps":    "Porosidade ε (-)",
+    "rho_B":  "Dens. Aparente ρb (kg/m³)",
+    "u":      "Velocidade u (m/s)",
+    "D_ax":   "Difusão axial Dax (m²/s)",
+    "kL":     "Coef. Transferência Massa kL (1/s)",
+    "qmax":   "Capacidade qmax (mol/kg)",
+    "b":      "Const. Afinidade b (1/C)",
+    "n":      "Exp. Freundlich n (-)",
+    "lam_z":  "Disp. Térmica λz (W/m·K)",
+    "rho_g":  "Dens. Gás ρg (kg/m³)",
+    "cp_g":   "Capacidade Ter. Gás (J/kg·K)",
+    "cp_s":   "Capacidade Ter. Sólido (J/kg·K)",
+    "D_col":  "Diâmetro Interno Dcol (m)",
+    "h_w":    "h Coef. Transf. Parede (W/m²·K)",
+    "T_wall": "T parede (K)",
+    "dH":     "Calor adsorvido ΔH (J/mol)",
+    "dt":     "Passo dt (s)",
+    "t_end":  "Tempo final (s)",
+    "C_in":   "C entrada (mol/m³)",
+    "T_in":   "T entrada (K)",
+}
+
+
+def b64_png(fig) -> str:
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=140, bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return "data:image/png;base64," + base64.b64encode(buf.read()).decode("utf-8")
+
+
+def gerar_grafico(x, y_pred, titulo, y_true=None):
+    fig, ax = plt.subplots(figsize=(4.6, 3.2))
+    if y_true is not None:
+        ax.plot(x, y_true, label="true")
     ax.plot(x, y_pred, label="pred")
     ax.set_title(titulo)
     ax.grid(True)
     ax.legend()
-
-    buf = io.BytesIO()
-    fig.savefig(buf, format="png", dpi=120, bbox_inches="tight")
-    plt.close(fig)
-    buf.seek(0)
-
-    b64 = base64.b64encode(buf.read()).decode("utf-8")
-    return f"data:image/png;base64,{b64}"
+    return b64_png(fig)
 
 
-def split_208(y_vec):
-    """
-    y_vec: shape (208,)
-    indices:
-    - finais: 0..3
-    - C_z:    4..54
-    - q_z:    55..105
-    - T_z:    106..156
-    - Qtot_t: 157..207
-    """
+def split_208(y_vec: np.ndarray):
     finals = y_vec[0:4]
     Cz = y_vec[4:4 + BLOCK_SIZE]
     qz = y_vec[4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE]
@@ -80,7 +117,83 @@ def split_208(y_vec):
     return finals, Cz, qz, Tz, Qt
 
 
-# carregar modelo e scalers
+def get_latest_run_dir() -> Path | None:
+    if LATEST_TXT.exists():
+        p = Path(LATEST_TXT.read_text(encoding="utf-8").strip())
+        if p.exists():
+            return p
+    if OUT_INFER_BASE.exists():
+        dirs = [d for d in OUT_INFER_BASE.iterdir() if d.is_dir() and d.name[:8].isdigit()]
+        if dirs:
+            return sorted(dirs, key=lambda d: d.name)[-1]
+    return None
+
+
+def load_metrics_from_last_validation(method: str):
+    run_dir = get_latest_run_dir()
+    if run_dir is None:
+        return None, None, "Nenhuma validação encontrada (rode validate_* primeiro)."
+
+    mdir = run_dir / method
+    blocks_csv = mdir / "metricas_por_bloco_val.csv"
+    finals_csv = mdir / "metricas_finais_individuais.csv"
+    if not blocks_csv.exists() or not finals_csv.exists():
+        return None, None, f"Não achei CSVs de métricas em: {mdir}"
+
+    df_blocks = pd.read_csv(blocks_csv)
+    df_finals = pd.read_csv(finals_csv)
+    return df_blocks, df_finals, f"Métricas carregadas de: {mdir}"
+
+
+def df_to_table(df: pd.DataFrame, max_rows: int = 12) -> ft.DataTable:
+    df = df.copy()
+    if len(df) > max_rows:
+        df = df.iloc[:max_rows]
+
+    def fmt(v):
+        if isinstance(v, float):
+            return f"{v:.6g}"
+        return str(v)
+
+    cols = [ft.DataColumn(ft.Text(str(c))) for c in df.columns]
+    rows = []
+    for _, r in df.iterrows():
+        cells = [ft.DataCell(ft.Text(fmt(v))) for v in r.values]
+        rows.append(ft.DataRow(cells=cells))
+    return ft.DataTable(columns=cols, rows=rows, column_spacing=18, data_row_min_height=34)
+
+
+_DATA_CACHE = {"loaded": False, "X": None, "Y": None, "n": 0}
+
+
+def load_dataset_cache():
+    if _DATA_CACHE["loaded"]:
+        return
+
+    if DATA_NPZ_PATH.exists():
+        data = np.load(str(DATA_NPZ_PATH), allow_pickle=True)
+        if "data" not in data.files or "columns" not in data.files:
+            raise ValueError("NPZ inválido: esperado chaves 'data' e 'columns'.")
+        mat = data["data"]
+        cols = [str(c) for c in data["columns"].tolist()]
+        idx_x = [cols.index(c) for c in PARAM_COLS]
+        idx_y = [cols.index(c) for c in OUTPUT_COLS]
+        X = mat[:, idx_x].astype(np.float32, copy=False)
+        Y = mat[:, idx_y].astype(np.float32, copy=False)
+    elif DATA_CSV_PATH.exists():
+        usecols = PARAM_COLS + OUTPUT_COLS
+        df = pd.read_csv(DATA_CSV_PATH, usecols=usecols)
+        X = df[PARAM_COLS].to_numpy(np.float32, copy=False)
+        Y = df[OUTPUT_COLS].to_numpy(np.float32, copy=False)
+    else:
+        raise FileNotFoundError("Dataset FULL não encontrado.")
+
+    _DATA_CACHE["X"] = X
+    _DATA_CACHE["Y"] = Y
+    _DATA_CACHE["n"] = int(X.shape[0])
+    _DATA_CACHE["loaded"] = True
+
+
 if not MODEL_PATH.exists():
     raise FileNotFoundError(f"Modelo não encontrado: {MODEL_PATH}")
 if not SCALER_IN_PATH.exists() or not SCALER_OUT_PATH.exists():
@@ -94,103 +207,363 @@ scaler_out = joblib.load(SCALER_OUT_PATH)
 def main(page: ft.Page):
     page.title = "Predição - Adsorção (22 -> 208)"
     page.scroll = "always"
-    page.window.width = 1300
-    page.window.height = 850
+    page.window.width = 1500
+    page.window.height = 930
 
-    campos = []
-    for nome, valor in zip(INPUT_COLS, VALORES_PADRAO):
-        campos.append(ft.TextField(label=nome, value=str(valor).replace(".", ","), width=140))
+    CARD_BG = "#151a1f"
+    GREEN_ACTIVE = ft.Colors.GREEN_700
+    BTN_H = 52
+    INPUT_W = 220
+    CARD_H = 455  # altura fixa, mas sem cortar pois AÇÕES terá scroll interno
 
-    status = ft.Text("")
+    true_state = {"has_true": False, "idx": None, "y_true": None}
+    random_state = {"order": None, "pos": 0}
 
-    # textos para finais
-    txt_finais = [ft.Text(f"{c}: -") for c in FINAL_COLS]
+    campos: list[ft.TextField] = []
+    for nome, valor in zip(PARAM_COLS, VALORES_PADRAO):
+        campos.append(
+            ft.TextField(
+                label=LABELS.get(nome, nome),
+                value=str(valor).replace(".", ","),
+                width=INPUT_W,
+                text_size=18,
+                label_style=ft.TextStyle(size=14),
+            )
+        )
 
-    # placeholder 1x1
+    status_true = ft.Text("TRUE: (não carregado)", color="grey")
+    status_run = ft.Text("", color="grey")
+    status_metrics = ft.Text("", color="grey")
+
+    idx_field = ft.TextField(
+        label="idx do dataset",
+        value="",
+        width=300,
+        text_size=18,
+        label_style=ft.TextStyle(size=14),
+    )
+
+    def set_inputs_from_x(x_row: np.ndarray):
+        for c, v in zip(campos, x_row):
+            c.value = f"{float(v):.6g}".replace(".", ",")
+        page.update()
+
+    def carregar_idx(_e):
+        try:
+            load_dataset_cache()
+            n = _DATA_CACHE["n"]
+            idx = int(idx_field.value.strip())
+            if idx < 0 or idx >= n:
+                raise ValueError(f"idx fora do range: 0..{n-1}")
+            x = _DATA_CACHE["X"][idx]
+            y = _DATA_CACHE["Y"][idx].reshape(-1)
+            set_inputs_from_x(x)
+            true_state["has_true"] = True
+            true_state["idx"] = idx
+            true_state["y_true"] = y
+            status_true.value = f"TRUE: carregado (idx={idx})"
+            status_true.color = "green"
+        except Exception as err:
+            true_state["has_true"] = False
+            true_state["idx"] = None
+            true_state["y_true"] = None
+            status_true.value = f"TRUE: erro -> {err}"
+            status_true.color = "red"
+        page.update()
+
+    def carregar_random(_e):
+        try:
+            load_dataset_cache()
+            n = _DATA_CACHE["n"]
+            if random_state["order"] is None or random_state["pos"] >= n:
+                rng = np.random.default_rng()
+                order = np.arange(n)
+                rng.shuffle(order)
+                random_state["order"] = order
+                random_state["pos"] = 0
+            idx = int(random_state["order"][random_state["pos"]])
+            random_state["pos"] += 1
+            idx_field.value = str(idx)
+            x = _DATA_CACHE["X"][idx]
+            y = _DATA_CACHE["Y"][idx].reshape(-1)
+            set_inputs_from_x(x)
+            true_state["has_true"] = True
+            true_state["idx"] = idx
+            true_state["y_true"] = y
+            status_true.value = f"TRUE: carregado (idx={idx})"
+            status_true.color = "green"
+        except Exception as err:
+            true_state["has_true"] = False
+            true_state["idx"] = None
+            true_state["y_true"] = None
+            status_true.value = f"TRUE: erro -> {err}"
+            status_true.color = "red"
+        page.update()
+
     PLACEHOLDER_SRC = (
         "data:image/png;base64,"
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMB/6X8xQAAAABJRU5ErkJggg=="
     )
+    img_C = ft.Image(src=PLACEHOLDER_SRC, width=470)
+    img_q = ft.Image(src=PLACEHOLDER_SRC, width=470)
+    img_T = ft.Image(src=PLACEHOLDER_SRC, width=470)
+    img_Q = ft.Image(src=PLACEHOLDER_SRC, width=470)
 
-    img_C = ft.Image(src=PLACEHOLDER_SRC, width=420)
-    img_q = ft.Image(src=PLACEHOLDER_SRC, width=420)
-    img_T = ft.Image(src=PLACEHOLDER_SRC, width=420)
-    img_Q = ft.Image(src=PLACEHOLDER_SRC, width=420)
+    res_lines = {c: ft.Text(f"{c}: -", size=16) for c in FINAL_COLS}
 
-    def rodar(_e):
+    method_dd = ft.Dropdown(label="Método", value="masked", width=240,
+                            options=[ft.dropdown.Option("masked"), ft.dropdown.Option("eps")])
+    view_dd = ft.Dropdown(label="Ver", value="blocos", width=240,
+                            options=[ft.dropdown.Option("blocos"), ft.dropdown.Option("finais")])
+    table_holder = ft.Column([], spacing=8)
+    df_blocks_cache = {"df": None}
+    df_finals_cache = {"df": None}
+
+    def render_metrics_table():
+        table_holder.controls.clear()
+        if view_dd.value == "blocos":
+            dfb = df_blocks_cache["df"]
+            table_holder.controls.append(df_to_table(dfb, 12) if dfb is not None else ft.Text("Sem métricas.", color="grey"))
+        else:
+            dff = df_finals_cache["df"]
+            table_holder.controls.append(df_to_table(dff, 12) if dff is not None else ft.Text("Sem métricas.", color="grey"))
+        page.update()
+
+    def carregar_metricas(_e):
+        dfb, dff, msg = load_metrics_from_last_validation(method_dd.value)
+        if dfb is None or dff is None:
+            df_blocks_cache["df"] = None
+            df_finals_cache["df"] = None
+            status_metrics.value = msg
+            status_metrics.color = "red"
+        else:
+            df_blocks_cache["df"] = dfb
+            df_finals_cache["df"] = dff
+            status_metrics.value = msg
+            status_metrics.color = "green"
+        render_metrics_table()
+
+    view_dd.on_change = lambda e: render_metrics_table()
+
+    btn_run = ft.Button("Rodar Modelo", height=BTN_H, width=280)
+
+    def set_run_button_state(state: str):
+        if state == "ok":
+            btn_run.text = "Rodado ✓"
+            btn_run.bgcolor = ft.Colors.GREEN_700
+            btn_run.color = ft.Colors.WHITE
+        elif state == "err":
+            btn_run.text = "Erro ✖"
+            btn_run.bgcolor = ft.Colors.RED_700
+            btn_run.color = ft.Colors.WHITE
+        else:
+            btn_run.text = "Rodar Modelo"
+            btn_run.bgcolor = ft.Colors.BLUE_700
+            btn_run.color = ft.Colors.WHITE
+        page.update()
+
+    def rodar_modelo(_e):
         try:
-            valores = []
-            for campo in campos:
-                valores.append(float(campo.value.replace(",", ".")))
-
-            if len(valores) != 22:
-                raise ValueError(f"Esperava 22 inputs, recebi {len(valores)}")
-
+            valores = [float(c.value.replace(",", ".")) for c in campos]
             X = np.array(valores, dtype=float).reshape(1, -1)
-
             expected = int(getattr(scaler_in, "n_features_in_", X.shape[1]))
             if X.shape[1] != expected:
-                raise ValueError(f"Scaler espera {expected} features, mas você passou {X.shape[1]}.")
-
+                raise ValueError(f"Scaler espera {expected} features, mas recebeu {X.shape[1]}.")
             Xn = scaler_in.transform(X)
             y_norm = model.predict(Xn, verbose=0)
-            y = scaler_out.inverse_transform(y_norm).reshape(-1)
+            y_pred = scaler_out.inverse_transform(y_norm).reshape(-1)
 
-            if y.shape[0] != 208:
-                raise ValueError(f"Modelo retornou {y.shape[0]} saídas, esperado 208.")
+            y_true_vec = true_state["y_true"] if true_state["has_true"] else None
+            finals_pred, Cz_pred, qz_pred, Tz_pred, Qt_pred = split_208(y_pred)
 
-            finals, Cz, qz, Tz, Qt = split_208(y)
+            if y_true_vec is not None:
+                finals_true, Cz_true, qz_true, Tz_true, Qt_true = split_208(y_true_vec)
+            else:
+                finals_true = Cz_true = qz_true = Tz_true = Qt_true = None
 
-            # atualizar textos finais
             for i, name in enumerate(FINAL_COLS):
-                txt_finais[i].value = f"{name}: {finals[i]:.6g}"
-                txt_finais[i].update()
+                if finals_true is not None:
+                    res_lines[name].value = f"{name}: true={finals_true[i]:.6g} | pred={finals_pred[i]:.6g}"
+                else:
+                    res_lines[name].value = f"{name}: pred={finals_pred[i]:.6g}"
 
-            # plota perfis "pred" contra "pred" (não tem true aqui)
-            # (se quiser comparar true, precisa escolher uma amostra do dataset)
             x = np.arange(BLOCK_SIZE)
-            img_C.src = gerar_grafico(x, Cz, Cz, "C(z) (pred)")
-            img_q.src = gerar_grafico(x, qz, qz, "q(z) (pred)")
-            img_T.src = gerar_grafico(x, Tz, Tz, "T(z) (pred)")
-            img_Q.src = gerar_grafico(x, Qt, Qt, "Qtot(t) (pred)")
+            img_C.src = gerar_grafico(x, Cz_pred, "C(z)", y_true=Cz_true)
+            img_q.src = gerar_grafico(x, qz_pred, "q(z)", y_true=qz_true)
+            img_T.src = gerar_grafico(x, Tz_pred, "T(z)", y_true=Tz_true)
+            img_Q.src = gerar_grafico(x, Qt_pred, "Qtot(t)", y_true=Qt_true)
 
-            img_C.update(); img_q.update(); img_T.update(); img_Q.update()
-
-            status.value = "Predição realizada com sucesso."
-            status.color = "green"
+            status_run.value = "Predição realizada com sucesso."
+            status_run.color = "green"
+            set_run_button_state("ok")
         except Exception as err:
-            status.value = f"Erro: {err}"
-            status.color = "red"
+            status_run.value = f"Erro: {err}"
+            status_run.color = "red"
+            set_run_button_state("err")
+        page.update()
 
-        status.update()
+    btn_run.on_click = rodar_modelo
+    set_run_button_state("ready")
 
-    # Compatibilidade flet (Button novo, ElevatedButton antigo)
-    if hasattr(ft, "Button"):
-        botao = ft.Button("Rodar Modelo", on_click=rodar)
-    else:
-        botao = ft.ElevatedButton("Rodar Modelo", on_click=rodar)
+    graphs_view = ft.Column(
+        [
+            ft.Text("Gráficos (TRUE vs PRED)", size=25, weight=ft.FontWeight.BOLD),
+            ft.Row([img_C, img_q], wrap=True, spacing=14),
+            ft.Row([img_T, img_Q], wrap=True, spacing=14),
+        ],
+        spacing=10,
+    )
+
+    results_view = ft.Column(
+        [
+            ft.Text("Resultados numéricos", size=25, weight=ft.FontWeight.BOLD),
+            ft.Text("Finais (true | pred) quando TRUE estiver carregado.", size=12, color="grey"),
+            ft.Divider(height=8),
+            res_lines[FINAL_COLS[0]],
+            res_lines[FINAL_COLS[1]],
+            res_lines[FINAL_COLS[2]],
+            res_lines[FINAL_COLS[3]],
+        ],
+        spacing=8,
+    )
+
+    validations_view = ft.Column(
+        [
+            ft.Text("Validações (última execução)", size=25, weight=ft.FontWeight.BOLD),
+            ft.Row(
+                [
+                    method_dd,
+                    view_dd,
+                    ft.Button("Carregar métricas", on_click=carregar_metricas, height=BTN_H),
+                ],
+                wrap=True,
+                spacing=10,
+            ),
+            status_metrics,
+            ft.Divider(height=8),
+            table_holder,
+        ],
+        spacing=10,
+    )
+
+    content_holder = ft.Container(content=graphs_view, padding=10, expand=True)
+
+    b_g = ft.Button("Gráficos", width=180, height=46)
+    b_r = ft.Button("Resultados", width=180, height=46)
+    b_v = ft.Button("Validações", width=180, height=46)
+
+    def set_sidebar_active(btn: ft.Button, active: bool):
+        if active:
+            btn.bgcolor = GREEN_ACTIVE
+            btn.color = ft.Colors.WHITE
+        else:
+            btn.bgcolor = None
+            btn.color = None
+
+    def set_view(key: str):
+        if key == "graficos":
+            content_holder.content = graphs_view
+        elif key == "resultados":
+            content_holder.content = results_view
+        else:
+            content_holder.content = validations_view
+
+        set_sidebar_active(b_g, key == "graficos")
+        set_sidebar_active(b_r, key == "resultados")
+        set_sidebar_active(b_v, key == "validacoes")
+        page.update()
+
+    b_g.on_click = lambda e: set_view("graficos")
+    b_r.on_click = lambda e: set_view("resultados")
+    b_v.on_click = lambda e: set_view("validacoes")
+
+    sidebar = ft.Container(
+        content=ft.Column(
+            [
+                ft.Text("Painel", size=30, weight=ft.FontWeight.BOLD),
+                ft.Divider(height=8),
+                b_g, b_r, b_v,
+            ],
+            spacing=10,
+            horizontal_alignment="center",
+        ),
+        padding=10,
+        width=220,
+    )
+
+    panel = ft.Container(
+        content=ft.Row(
+            [
+                sidebar,
+                ft.Container(width=12),
+                ft.Container(content=content_holder, expand=True),
+            ],
+            spacing=0,
+        ),
+        padding=12,
+        border_radius=12,
+        bgcolor=CARD_BG,
+    )
+
+    # ---- Cards topo (mesma altura) ----
+    btn_rand = ft.Button("Amostra aleatória", on_click=carregar_random, height=BTN_H, width=260)
+    btn_load = ft.Button("Carregar idx", on_click=carregar_idx, height=BTN_H, width=260)
+
+    # IMPORTANTE: conteúdo do AÇÕES com scroll interno para nunca cortar
+    actions_content = ft.Column(
+        [
+            ft.Text("Ações", size=30, weight=ft.FontWeight.BOLD),
+            idx_field,
+            ft.Row([btn_rand], alignment="center"),
+            ft.Row([btn_load], alignment="center"),
+            ft.Divider(22),
+            status_true,
+            status_run,
+            ft.Divider(height=22),
+            ft.Row([btn_run], alignment="center"),
+            ft.Container(height=8),  # respiro final
+        ],
+        spacing=10,
+        scroll="auto",  # <- resolve o "cortado"
+    )
+
+    actions_card = ft.Container(
+        content=actions_content,
+        padding=14,
+        border_radius=12,
+        bgcolor=CARD_BG,
+        width=330,
+        height=CARD_H,
+    )
+
+    inputs_card = ft.Container(
+        content=ft.Column(
+            [
+                ft.Text("Entradas do modelo (22 parâmetros)", size=30, weight=ft.FontWeight.BOLD),
+                ft.Row(campos, wrap=True, spacing=12, run_spacing=12),
+            ],
+            spacing=10,
+            scroll="auto",  # também pode rolar se precisar
+        ),
+        padding=14,
+        border_radius=12,
+        bgcolor=CARD_BG,
+        expand=1,
+        height=CARD_H,
+    )
+
+    set_view("graficos")
 
     page.add(
         ft.Column(
             [
-                ft.Text("Entradas (22 parâmetros):"),
-                ft.Row(campos, wrap=True),
-                botao,
-                status,
-                ft.Divider(),
-                ft.Text("Saídas finais (4):"),
-                ft.Column(txt_finais),
-                ft.Divider(),
-                ft.Row([img_C, img_q], wrap=True),
-                ft.Row([img_T, img_Q], wrap=True),
-            ]
+                ft.Row([actions_card, inputs_card], spacing=14, vertical_alignment="start"),
+                panel,
+            ],
+            spacing=14,
         )
     )
 
 
 if __name__ == "__main__":
-    # versões novas do Flet recomendam run()
-    if hasattr(ft, "run"):
-        ft.run(main)
-    else:
-        ft.app(target=main)
+    ft.app(target=main)
