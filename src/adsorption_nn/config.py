@@ -45,6 +45,23 @@ ADS_SCALER_OUT = ADS_MODELS_DIR / "scaler_output.save"
 ADS_META = ADS_MODELS_DIR / "model_meta.json"
 ADS_BEST_HP = ADS_MODELS_DIR / "best_hp.json"
 
+# -----------------------
+# MÉTRICAS "DE RELEASE" (versionáveis junto com o modelo)
+# -----------------------
+ADS_VALIDATION_DIR = ADS_MODELS_DIR / "validation"
+ADS_VAL_EPS_DIR = ADS_VALIDATION_DIR / "eps"
+ADS_VAL_MASKED_DIR = ADS_VALIDATION_DIR / "masked"
+
+ADS_VAL_EPS_BLOCKS = ADS_VAL_EPS_DIR / "blocks.csv"
+ADS_VAL_EPS_FINALS = ADS_VAL_EPS_DIR / "finals.csv"
+ADS_VAL_EPS_SUMMARY = ADS_VAL_EPS_DIR / "summary.json"
+
+ADS_VAL_MASKED_BLOCKS = ADS_VAL_MASKED_DIR / "blocks.csv"
+ADS_VAL_MASKED_FINALS = ADS_VAL_MASKED_DIR / "finals.csv"
+ADS_VAL_MASKED_SUMMARY = ADS_VAL_MASKED_DIR / "summary.json"
+
+ADS_VAL_LATEST = ADS_VALIDATION_DIR / "LATEST.json"
+
 # Nu/Uvec
 NU_BEST_MODEL = NU_MODELS_DIR / "best_model.keras"
 NU_SCALER_X = NU_MODELS_DIR / "scaler_X.pkl"
@@ -71,9 +88,11 @@ NU_OUT_TRAIN = NU_OUT_DIR / "training"
 NU_OUT_INFER = NU_OUT_DIR / "inference"
 NU_CURVE_PATH = NU_OUT_TRAIN / "curva_treinamento.png"
 
+
 def now_tag() -> str:
     """Tag YYYYMMDD_HHMMSS para nomes únicos."""
     return datetime.now().strftime("%Y%m%d_%H%M%S")
+
 
 def ensure_dirs() -> None:
     """Cria todas as pastas esperadas do projeto."""
@@ -82,6 +101,10 @@ def ensure_dirs() -> None:
 
     ADS_MODELS_DIR.mkdir(parents=True, exist_ok=True)
     NU_MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+    ADS_VALIDATION_DIR.mkdir(parents=True, exist_ok=True)
+    ADS_VAL_EPS_DIR.mkdir(parents=True, exist_ok=True)
+    ADS_VAL_MASKED_DIR.mkdir(parents=True, exist_ok=True)
 
     ADS_OUT_TRAIN.mkdir(parents=True, exist_ok=True)
     ADS_OUT_INFER.mkdir(parents=True, exist_ok=True)

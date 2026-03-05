@@ -12,6 +12,9 @@ Gera:
 - metricas_por_bloco_val.csv
 - metricas_finais_individuais.csv
 (opcional) predicoes_val_<N>.csv
+
+Também exporta "release" em:
+  models/adsorption/validation/masked/
 """
 
 import sys
@@ -19,6 +22,7 @@ import json
 import math
 import argparse
 from pathlib import Path
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -36,7 +40,7 @@ SRC_DIR = ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-import adsorption_nn.config as cfg
+import adsorption_nn.config as cfg  # noqa: E402
 cfg.ensure_dirs()
 
 
@@ -60,8 +64,8 @@ def mape_masked(y_true, y_pred, threshold=1e-3):
         return float("nan"), n_used, n_total
 
     denom = np.abs(y_true[mask])
-    mape = np.mean(np.abs((y_true[mask] - y_pred[mask]) / denom)) * 100.0
-    return float(mape), n_used, n_total
+    m = float(np.mean(np.abs((y_true[mask] - y_pred[mask]) / denom)) * 100.0)
+    return m, n_used, n_total
 
 
 def compute_metrics_masked(y_true, y_pred, threshold=1e-3):
@@ -95,6 +99,53 @@ def fmt(x):
     return f"{x:.6g}"
 
 
+def _rel(p: Path) -> str:
+    try:
+        return str(p.relative_to(cfg.ROOT))
+    except Exception:
+        return str(p)
+
+
+def export_release_metrics_masked(
+    *,
+    tag: str,
+    df_blocks: pd.DataFrame,
+    df_finals: pd.DataFrame,
+    global_metrics: dict,
+    model_path: Path,
+    dataset_path: Path,
+    threshold: float,
+    seed: int,
+    max_samples: int,
+) -> None:
+    cfg.ensure_dirs()
+    cfg.ADS_VAL_MASKED_DIR.mkdir(parents=True, exist_ok=True)
+
+    df_blocks.to_csv(cfg.ADS_VAL_MASKED_BLOCKS, index=False, encoding="utf-8")
+    df_finals.to_csv(cfg.ADS_VAL_MASKED_FINALS, index=False, encoding="utf-8")
+
+    summary = {
+        "method": "masked",
+        "tag": tag,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "model": _rel(model_path),
+        "dataset": _rel(dataset_path),
+        "seed": int(seed),
+        "max_samples": int(max_samples),
+        "params": {"threshold": float(threshold)},
+        "global": global_metrics,
+        "files": {
+            "blocks_csv": _rel(cfg.ADS_VAL_MASKED_BLOCKS),
+            "finals_csv": _rel(cfg.ADS_VAL_MASKED_FINALS),
+        },
+    }
+    cfg.ADS_VAL_MASKED_SUMMARY.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    cfg.ADS_VAL_LATEST.write_text(
+        json.dumps({"method": "masked", "tag": tag, "created_at": summary["created_at"]}, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
 # =======================================================
 # CLI
 # =======================================================
@@ -122,9 +173,13 @@ tag = args.tag if args.tag else cfg.now_tag()
 outdir = out_base / tag / "masked"
 ensure_dir(outdir)
 
-# Registrar última execução (base)
+# Registrar última execução (base) - salva RELATIVO ao ROOT quando possível
 latest_file = out_base / "LATEST.txt"
-latest_file.write_text(str(out_base / tag), encoding="utf-8")
+run_base = out_base / tag
+try:
+    latest_file.write_text(str(run_base.relative_to(cfg.ROOT)), encoding="utf-8")
+except Exception:
+    latest_file.write_text(str(run_base), encoding="utf-8")
 
 print("[DEBUG] ROOT        =", cfg.ROOT)
 print("[DEBUG] MODEL       =", model_path)
@@ -232,10 +287,10 @@ def sl(a, b):
     return slice(a, b)
 
 S_FINAL = sl(0, 4)
-S_CZ    = sl(4, 4 + BLOCK_SIZE)
-S_QZ    = sl(4 + BLOCK_SIZE, 4 + 2 * BLOCK_SIZE)
-S_TZ    = sl(4 + 2 * BLOCK_SIZE, 4 + 3 * BLOCK_SIZE)
-S_QTOT  = sl(4 + 3 * BLOCK_SIZE, 4 + 4 * BLOCK_SIZE)
+S_CZ = sl(4, 4 + BLOCK_SIZE)
+S_QZ = sl(4 + BLOCK_SIZE, 4 + 2 * BLOCK_SIZE)
+S_TZ = sl(4 + 2 * BLOCK_SIZE, 4 + 3 * BLOCK_SIZE)
+S_QTOT = sl(4 + 3 * BLOCK_SIZE, 4 + 4 * BLOCK_SIZE)
 
 rows = []
 for name, s in [
@@ -284,6 +339,23 @@ print("\n============== MÉTRICAS FINAIS (INDIVIDUAIS) [MASKED] ==============")
 print(df_finals.to_string(index=False))
 print("====================================================================")
 print("[OK] Métricas finais individuais salvas em:", finals_path)
+
+# Export "release"
+try:
+    export_release_metrics_masked(
+        tag=tag,
+        df_blocks=df_blocks,
+        df_finals=df_finals,
+        global_metrics=glob,
+        model_path=model_path,
+        dataset_path=npz_path,
+        threshold=args.mape_threshold,
+        seed=args.seed,
+        max_samples=args.max_samples,
+    )
+    print("[OK] Export de métricas (MASKED) em:", cfg.ADS_VAL_MASKED_DIR)
+except Exception as err:
+    print("[WARN] Falha ao exportar métricas para models/:", err)
 
 
 # =======================================================

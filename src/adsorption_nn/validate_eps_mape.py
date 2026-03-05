@@ -12,6 +12,9 @@ Gera:
 - metricas_por_bloco_val.csv
 - metricas_finais_individuais.csv
 (opcional) predicoes_val_<N>.csv
+
+Também exporta "release" em:
+  models/adsorption/validation/eps/
 """
 
 import sys
@@ -19,6 +22,7 @@ import json
 import math
 import argparse
 from pathlib import Path
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -36,7 +40,7 @@ SRC_DIR = ROOT / "src"
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
-import adsorption_nn.config as cfg
+import adsorption_nn.config as cfg  # noqa: E402
 cfg.ensure_dirs()
 
 
@@ -47,12 +51,14 @@ def ensure_dir(p: Path):
 def mape_eps(y_true, y_pred, eps=1e-8):
     """
     MAPE com EPS (igual ao vali.py):
-      denom = max(|y_true|, eps)
+    denom = max(|y_true|, eps) (element-wise)
     """
     y_true = np.asarray(y_true, dtype=float).ravel()
     y_pred = np.asarray(y_pred, dtype=float).ravel()
     denom = np.maximum(np.abs(y_true), float(eps))
-    return float(np.mean(np.abs((y_true - y_pred) / denom)) * 100.0), int(y_true.size), int(y_true.size)
+    m = float(np.mean(np.abs((y_true - y_pred) / denom)) * 100.0)
+    n = int(y_true.size)
+    return m, n, n
 
 
 def compute_metrics_eps(y_true, y_pred, eps=1e-8):
@@ -86,6 +92,53 @@ def fmt(x):
     return f"{x:.6g}"
 
 
+def _rel(p: Path) -> str:
+    try:
+        return str(p.relative_to(cfg.ROOT))
+    except Exception:
+        return str(p)
+
+
+def export_release_metrics_eps(
+    *,
+    tag: str,
+    df_blocks: pd.DataFrame,
+    df_finals: pd.DataFrame,
+    global_metrics: dict,
+    model_path: Path,
+    dataset_path: Path,
+    eps: float,
+    seed: int,
+    max_samples: int,
+) -> None:
+    cfg.ensure_dirs()
+    cfg.ADS_VAL_EPS_DIR.mkdir(parents=True, exist_ok=True)
+
+    df_blocks.to_csv(cfg.ADS_VAL_EPS_BLOCKS, index=False, encoding="utf-8")
+    df_finals.to_csv(cfg.ADS_VAL_EPS_FINALS, index=False, encoding="utf-8")
+
+    summary = {
+        "method": "eps",
+        "tag": tag,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+        "model": _rel(model_path),
+        "dataset": _rel(dataset_path),
+        "seed": int(seed),
+        "max_samples": int(max_samples),
+        "params": {"eps": float(eps)},
+        "global": global_metrics,
+        "files": {
+            "blocks_csv": _rel(cfg.ADS_VAL_EPS_BLOCKS),
+            "finals_csv": _rel(cfg.ADS_VAL_EPS_FINALS),
+        },
+    }
+    cfg.ADS_VAL_EPS_SUMMARY.write_text(json.dumps(summary, indent=2, ensure_ascii=False), encoding="utf-8")
+    cfg.ADS_VAL_LATEST.write_text(
+        json.dumps({"method": "eps", "tag": tag, "created_at": summary["created_at"]}, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+
 # =======================================================
 # CLI
 # =======================================================
@@ -113,9 +166,13 @@ tag = args.tag if args.tag else cfg.now_tag()
 outdir = out_base / tag / "eps"
 ensure_dir(outdir)
 
-# Registrar última execução (base)
+# Registrar última execução (base) - salva RELATIVO ao ROOT quando possível
 latest_file = out_base / "LATEST.txt"
-latest_file.write_text(str(out_base / tag), encoding="utf-8")
+run_base = out_base / tag
+try:
+    latest_file.write_text(str(run_base.relative_to(cfg.ROOT)), encoding="utf-8")
+except Exception:
+    latest_file.write_text(str(run_base), encoding="utf-8")
 
 print("[DEBUG] ROOT        =", cfg.ROOT)
 print("[DEBUG] MODEL       =", model_path)
@@ -217,20 +274,15 @@ print(
 
 # =======================================================
 # Métricas por blocos
-# finais: 0..3
-# C_z:    4..54
-# q_z:    55..105
-# T_z:    106..156
-# Qtot_t: 157..207
 # =======================================================
 def sl(a, b):
     return slice(a, b)
 
 S_FINAL = sl(0, 4)
-S_CZ    = sl(4, 4 + BLOCK_SIZE)
-S_QZ    = sl(4 + BLOCK_SIZE, 4 + 2 * BLOCK_SIZE)
-S_TZ    = sl(4 + 2 * BLOCK_SIZE, 4 + 3 * BLOCK_SIZE)
-S_QTOT  = sl(4 + 3 * BLOCK_SIZE, 4 + 4 * BLOCK_SIZE)
+S_CZ = sl(4, 4 + BLOCK_SIZE)
+S_QZ = sl(4 + BLOCK_SIZE, 4 + 2 * BLOCK_SIZE)
+S_TZ = sl(4 + 2 * BLOCK_SIZE, 4 + 3 * BLOCK_SIZE)
+S_QTOT = sl(4 + 3 * BLOCK_SIZE, 4 + 4 * BLOCK_SIZE)
 
 rows = []
 for name, s in [
@@ -279,6 +331,23 @@ print("\n============== MÉTRICAS FINAIS (INDIVIDUAIS) [EPS] ==============")
 print(df_finals.to_string(index=False))
 print("=================================================================")
 print("[OK] Métricas finais individuais salvas em:", finals_path)
+
+# Export "release"
+try:
+    export_release_metrics_eps(
+        tag=tag,
+        df_blocks=df_blocks,
+        df_finals=df_finals,
+        global_metrics=glob,
+        model_path=model_path,
+        dataset_path=npz_path,
+        eps=args.eps,
+        seed=args.seed,
+        max_samples=args.max_samples,
+    )
+    print("[OK] Export de métricas (EPS) em:", cfg.ADS_VAL_EPS_DIR)
+except Exception as err:
+    print("[WARN] Falha ao exportar métricas para models/:", err)
 
 
 # =======================================================

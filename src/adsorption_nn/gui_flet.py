@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import io
 import json
+import sys
 from pathlib import Path
 
 import flet as ft
@@ -13,17 +14,29 @@ import joblib
 import matplotlib.pyplot as plt
 import pandas as pd
 
+
+# -----------------------------------------------------------------------------
+# Bootstrap: rodar via "uv run python src/adsorption_nn/gui_flet.py"
+# garante import de adsorption_nn.config
+# -----------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parents[2]
+SRC_DIR = ROOT / "src"
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
 
-MODEL_PATH = ROOT / "models" / "adsorption" / "best_model.keras"
-SCALER_IN_PATH = ROOT / "models" / "adsorption" / "scaler_input.save"
-SCALER_OUT_PATH = ROOT / "models" / "adsorption" / "scaler_output.save"
-META_PATH = ROOT / "models" / "adsorption" / "model_meta.json"
+import adsorption_nn.config as cfg  # noqa: E402
 
-DATA_NPZ_PATH = ROOT / "data" / "processed" / "adsorption" / "dataset_FULL.npz"
-DATA_CSV_PATH = ROOT / "data" / "processed" / "adsorption" / "dataset_FULL.csv"
+cfg.ensure_dirs()
 
-OUT_INFER_BASE = ROOT / "outputs" / "adsorption" / "inference"
+MODEL_PATH = cfg.ADS_BEST_MODEL
+SCALER_IN_PATH = cfg.ADS_SCALER_IN
+SCALER_OUT_PATH = cfg.ADS_SCALER_OUT
+META_PATH = cfg.ADS_META
+
+DATA_NPZ_PATH = cfg.ADS_FULL_NPZ
+DATA_CSV_PATH = cfg.ADS_FULL_CSV
+
+OUT_INFER_BASE = cfg.ADS_OUT_INFER
 LATEST_TXT = OUT_INFER_BASE / "LATEST.txt"
 
 BLOCK_SIZE_DEFAULT = 51
@@ -35,11 +48,30 @@ PARAM_COLS_FALLBACK = [
 ]
 FINAL_COLS_FALLBACK = ["C_out_final", "q_out_final", "T_out_final", "N_ads_final"]
 
-VALORES_PADRAO = [
-    0.978, 51, 0.761, 381.785, 0.808, 0.000, 0.003, 0.136, 7.620, 1.065,
-    0.772, 1.706, 1037.205, 1118.988, 0.049, 16.764, 306.493, 48910.134,
-    0.333, 333.321, 1.691, 301.962
-]
+VALORES_PADRAO_MAP = {
+    "L": 0.978,
+    "Nz": 51,
+    "eps": 0.761,
+    "rho_B": 381.785,
+    "u": 0.808,
+    "D_ax": 0.000,
+    "kL": 0.003,
+    "qmax": 0.136,
+    "b": 7.620,
+    "n": 1.065,
+    "lam_z": 0.772,
+    "rho_g": 1.706,
+    "cp_g": 1037.205,
+    "cp_s": 1118.988,
+    "D_col": 0.049,
+    "h_w": 16.764,
+    "T_wall": 306.493,
+    "dH": 48910.134,
+    "dt": 0.333,
+    "t_end": 333.321,
+    "C_in": 1.691,
+    "T_in": 301.962,
+}
 
 
 def load_meta():
@@ -109,6 +141,7 @@ def gerar_grafico(x, y_pred, titulo, y_true=None):
 
 
 def split_208(y_vec: np.ndarray):
+    y_vec = np.asarray(y_vec, dtype=float).reshape(-1)
     finals = y_vec[0:4]
     Cz = y_vec[4:4 + BLOCK_SIZE]
     qz = y_vec[4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE]
@@ -117,11 +150,19 @@ def split_208(y_vec: np.ndarray):
     return finals, Cz, qz, Tz, Qt
 
 
+# -----------------------------------------------------------------------------
+# LATEST: aceita path absoluto OU relativo ao ROOT
+# -----------------------------------------------------------------------------
 def get_latest_run_dir() -> Path | None:
     if LATEST_TXT.exists():
-        p = Path(LATEST_TXT.read_text(encoding="utf-8").strip())
-        if p.exists():
-            return p
+        raw = LATEST_TXT.read_text(encoding="utf-8").strip()
+        if raw:
+            p = Path(raw)
+            if not p.is_absolute():
+                p = cfg.ROOT / p
+            if p.exists():
+                return p
+
     if OUT_INFER_BASE.exists():
         dirs = [d for d in OUT_INFER_BASE.iterdir() if d.is_dir() and d.name[:8].isdigit()]
         if dirs:
@@ -129,10 +170,29 @@ def get_latest_run_dir() -> Path | None:
     return None
 
 
-def load_metrics_from_last_validation(method: str):
+# -----------------------------------------------------------------------------
+# Métricas: primeiro tenta "release" (models/.../validation), depois "dev" (outputs)
+# -----------------------------------------------------------------------------
+def load_metrics(method: str):
+    if method == "masked":
+        blocks_csv = cfg.ADS_VAL_MASKED_BLOCKS
+        finals_csv = cfg.ADS_VAL_MASKED_FINALS
+        origin = f"Métricas do pacote do modelo: {cfg.ADS_VAL_MASKED_DIR}"
+    else:
+        blocks_csv = cfg.ADS_VAL_EPS_BLOCKS
+        finals_csv = cfg.ADS_VAL_EPS_FINALS
+        origin = f"Métricas do pacote do modelo: {cfg.ADS_VAL_EPS_DIR}"
+
+    if blocks_csv.exists() and finals_csv.exists():
+        return pd.read_csv(blocks_csv), pd.read_csv(finals_csv), origin
+
     run_dir = get_latest_run_dir()
     if run_dir is None:
-        return None, None, "Nenhuma validação encontrada (rode validate_* primeiro)."
+        return None, None, (
+            "Nenhuma métrica encontrada.\n"
+            "- Usuário final: inclua models/adsorption/validation/ no repo.\n"
+            "- Dev: rode validate_* para gerar outputs/..."
+        )
 
     mdir = run_dir / method
     blocks_csv = mdir / "metricas_por_bloco_val.csv"
@@ -140,9 +200,7 @@ def load_metrics_from_last_validation(method: str):
     if not blocks_csv.exists() or not finals_csv.exists():
         return None, None, f"Não achei CSVs de métricas em: {mdir}"
 
-    df_blocks = pd.read_csv(blocks_csv)
-    df_finals = pd.read_csv(finals_csv)
-    return df_blocks, df_finals, f"Métricas carregadas de: {mdir}"
+    return pd.read_csv(blocks_csv), pd.read_csv(finals_csv), f"Métricas (dev): {mdir}"
 
 
 def df_to_table(df: pd.DataFrame, max_rows: int = 12) -> ft.DataTable:
@@ -150,7 +208,7 @@ def df_to_table(df: pd.DataFrame, max_rows: int = 12) -> ft.DataTable:
     if len(df) > max_rows:
         df = df.iloc[:max_rows]
 
-    def fmt(v):
+    def _fmt(v):
         if isinstance(v, float):
             return f"{v:.6g}"
         return str(v)
@@ -158,11 +216,14 @@ def df_to_table(df: pd.DataFrame, max_rows: int = 12) -> ft.DataTable:
     cols = [ft.DataColumn(ft.Text(str(c))) for c in df.columns]
     rows = []
     for _, r in df.iterrows():
-        cells = [ft.DataCell(ft.Text(fmt(v))) for v in r.values]
+        cells = [ft.DataCell(ft.Text(_fmt(v))) for v in r.values]
         rows.append(ft.DataRow(cells=cells))
     return ft.DataTable(columns=cols, rows=rows, column_spacing=18, data_row_min_height=34)
 
 
+# -----------------------------------------------------------------------------
+# Dataset cache (opcional)
+# -----------------------------------------------------------------------------
 _DATA_CACHE = {"loaded": False, "X": None, "Y": None, "n": 0}
 
 
@@ -186,7 +247,11 @@ def load_dataset_cache():
         X = df[PARAM_COLS].to_numpy(np.float32, copy=False)
         Y = df[OUTPUT_COLS].to_numpy(np.float32, copy=False)
     else:
-        raise FileNotFoundError("Dataset FULL não encontrado.")
+        raise FileNotFoundError(
+            "Dataset FULL não encontrado.\n"
+            "Obs.: para usuário final isso é normal (o app roda sem dataset).\n"
+            "Para treinar/validar do zero, coloque dataset em data/processed/adsorption/."
+        )
 
     _DATA_CACHE["X"] = X
     _DATA_CACHE["Y"] = Y
@@ -194,10 +259,13 @@ def load_dataset_cache():
     _DATA_CACHE["loaded"] = True
 
 
+# -----------------------------------------------------------------------------
+# Modelo e scalers (obrigatórios para uso do app)
+# -----------------------------------------------------------------------------
 if not MODEL_PATH.exists():
     raise FileNotFoundError(f"Modelo não encontrado: {MODEL_PATH}")
 if not SCALER_IN_PATH.exists() or not SCALER_OUT_PATH.exists():
-    raise FileNotFoundError("Scalers não encontrados em models/adsorption. Rode o train.py.")
+    raise FileNotFoundError("Scalers não encontrados em models/adsorption (devem vir versionados).")
 
 model = tf.keras.models.load_model(str(MODEL_PATH), compile=False)
 scaler_in = joblib.load(SCALER_IN_PATH)
@@ -214,13 +282,18 @@ def main(page: ft.Page):
     GREEN_ACTIVE = ft.Colors.GREEN_700
     BTN_H = 52
     INPUT_W = 220
-    CARD_H = 455  # altura fixa, mas sem cortar pois AÇÕES terá scroll interno
+    CARD_H = 455  # mantém estável; cards internos com scroll
+
+    dataset_available = DATA_NPZ_PATH.exists() or DATA_CSV_PATH.exists()
 
     true_state = {"has_true": False, "idx": None, "y_true": None}
     random_state = {"order": None, "pos": 0}
 
+    # defaults alinhados com PARAM_COLS
+    valores_padrao = [VALORES_PADRAO_MAP.get(nome, 0.0) for nome in PARAM_COLS]
+
     campos: list[ft.TextField] = []
-    for nome, valor in zip(PARAM_COLS, VALORES_PADRAO):
+    for nome, valor in zip(PARAM_COLS, valores_padrao):
         campos.append(
             ft.TextField(
                 label=LABELS.get(nome, nome),
@@ -231,7 +304,10 @@ def main(page: ft.Page):
             )
         )
 
-    status_true = ft.Text("TRUE: (não carregado)", color="grey")
+    status_true = ft.Text(
+        "TRUE: dataset FULL não está no pacote (OK)." if not dataset_available else "TRUE: (não carregado)",
+        color="grey",
+    )
     status_run = ft.Text("", color="grey")
     status_metrics = ft.Text("", color="grey")
 
@@ -241,6 +317,7 @@ def main(page: ft.Page):
         width=300,
         text_size=18,
         label_style=ft.TextStyle(size=14),
+        disabled=not dataset_available,
     )
 
     def set_inputs_from_x(x_row: np.ndarray):
@@ -311,10 +388,18 @@ def main(page: ft.Page):
 
     res_lines = {c: ft.Text(f"{c}: -", size=16) for c in FINAL_COLS}
 
-    method_dd = ft.Dropdown(label="Método", value="masked", width=240,
-                            options=[ft.dropdown.Option("masked"), ft.dropdown.Option("eps")])
-    view_dd = ft.Dropdown(label="Ver", value="blocos", width=240,
-                            options=[ft.dropdown.Option("blocos"), ft.dropdown.Option("finais")])
+    method_dd = ft.Dropdown(
+        label="Método",
+        value="masked",
+        width=240,
+        options=[ft.dropdown.Option("masked"), ft.dropdown.Option("eps")],
+    )
+    view_dd = ft.Dropdown(
+        label="Ver",
+        value="blocos",
+        width=240,
+        options=[ft.dropdown.Option("blocos"), ft.dropdown.Option("finais")],
+    )
     table_holder = ft.Column([], spacing=8)
     df_blocks_cache = {"df": None}
     df_finals_cache = {"df": None}
@@ -330,7 +415,7 @@ def main(page: ft.Page):
         page.update()
 
     def carregar_metricas(_e):
-        dfb, dff, msg = load_metrics_from_last_validation(method_dd.value)
+        dfb, dff, msg = load_metrics(method_dd.value)
         if dfb is None or dff is None:
             df_blocks_cache["df"] = None
             df_finals_cache["df"] = None
@@ -429,7 +514,7 @@ def main(page: ft.Page):
 
     validations_view = ft.Column(
         [
-            ft.Text("Validações (última execução)", size=25, weight=ft.FontWeight.BOLD),
+            ft.Text("Validações (sem precisar do dataset)", size=25, weight=ft.FontWeight.BOLD),
             ft.Row(
                 [
                     method_dd,
@@ -505,11 +590,9 @@ def main(page: ft.Page):
         bgcolor=CARD_BG,
     )
 
-    # ---- Cards topo (mesma altura) ----
-    btn_rand = ft.Button("Amostra aleatória", on_click=carregar_random, height=BTN_H, width=260)
-    btn_load = ft.Button("Carregar idx", on_click=carregar_idx, height=BTN_H, width=260)
+    btn_rand = ft.Button("Amostra aleatória", on_click=carregar_random, height=BTN_H, width=260, disabled=not dataset_available)
+    btn_load = ft.Button("Carregar idx", on_click=carregar_idx, height=BTN_H, width=260, disabled=not dataset_available)
 
-    # IMPORTANTE: conteúdo do AÇÕES com scroll interno para nunca cortar
     actions_content = ft.Column(
         [
             ft.Text("Ações", size=30, weight=ft.FontWeight.BOLD),
@@ -521,10 +604,10 @@ def main(page: ft.Page):
             status_run,
             ft.Divider(height=22),
             ft.Row([btn_run], alignment="center"),
-            ft.Container(height=8),  # respiro final
+            ft.Container(height=8),
         ],
         spacing=10,
-        scroll="auto",  # <- resolve o "cortado"
+        scroll="auto",
     )
 
     actions_card = ft.Container(
@@ -543,7 +626,7 @@ def main(page: ft.Page):
                 ft.Row(campos, wrap=True, spacing=12, run_spacing=12),
             ],
             spacing=10,
-            scroll="auto",  # também pode rolar se precisar
+            scroll="auto",
         ),
         padding=14,
         border_radius=12,
