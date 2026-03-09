@@ -11,6 +11,8 @@ from sklearn.preprocessing import StandardScaler
 import joblib
 import matplotlib.pyplot as plt
 
+# TODO: PARA TREINAR SÓ O O MODELO FINAL É SÓ RODAR COM O  USE_TUNER = False (ta na linha 177)
+
 # -------------------------
 # Bootstrap import config
 # -------------------------

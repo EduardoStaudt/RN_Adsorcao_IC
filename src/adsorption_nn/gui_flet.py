@@ -129,12 +129,15 @@ def b64_png(fig) -> str:
     return "data:image/png;base64," + base64.b64encode(buf.read()).decode("utf-8")
 
 
-def gerar_grafico(x, y_pred, titulo, y_true=None):
-    fig, ax = plt.subplots(figsize=(4.6, 3.2))
+def gerar_grafico(x, y_pred, titulo, eixo_x, eixo_y, y_true=None):
+    fig, ax = plt.subplots(figsize=(3.4, 2)) # 4.6, 3.2 original
     if y_true is not None:
         ax.plot(x, y_true, label="true")
     ax.plot(x, y_pred, label="pred")
     ax.set_title(titulo)
+    ax.set_xlabel(eixo_x, fontsize=12)     # eixo X
+    ax.set_ylabel(eixo_y, fontsize=12)  # eixo Y
+    ax.tick_params(axis="both", labelsize=12)
     ax.grid(True)
     ax.legend()
     return b64_png(fig)
@@ -281,8 +284,8 @@ def main(page: ft.Page):
     CARD_BG = "#151a1f"
     GREEN_ACTIVE = ft.Colors.GREEN_700
     BTN_H = 52
-    INPUT_W = 220
-    CARD_H = 455  # mantém estável; cards internos com scroll
+    INPUT_W = 230 # 220
+    CARD_H = 350  # 455
 
     dataset_available = DATA_NPZ_PATH.exists() or DATA_CSV_PATH.exists()
 
@@ -299,8 +302,8 @@ def main(page: ft.Page):
                 label=LABELS.get(nome, nome),
                 value=str(valor).replace(".", ","),
                 width=INPUT_W,
-                text_size=18,
-                label_style=ft.TextStyle(size=14),
+                text_size=21,
+                label_style=ft.TextStyle(size=16),
             )
         )
 
@@ -315,8 +318,8 @@ def main(page: ft.Page):
         label="idx do dataset",
         value="",
         width=300,
-        text_size=18,
-        label_style=ft.TextStyle(size=14),
+        text_size=21,
+        label_style=ft.TextStyle(size=16),
         disabled=not dataset_available,
     )
 
@@ -430,7 +433,9 @@ def main(page: ft.Page):
 
     view_dd.on_change = lambda e: render_metrics_table()
 
-    btn_run = ft.Button("Rodar Modelo", height=BTN_H, width=280)
+    btn_run = ft.Button("Rodar Modelo", height=BTN_H, width=280, style=ft.ButtonStyle(
+        text_style=ft.TextStyle(size=25, weight=ft.FontWeight.BOLD)
+    ))
 
     def set_run_button_state(state: str):
         if state == "ok":
@@ -472,11 +477,13 @@ def main(page: ft.Page):
                 else:
                     res_lines[name].value = f"{name}: pred={finals_pred[i]:.6g}"
 
-            x = np.arange(BLOCK_SIZE)
-            img_C.src = gerar_grafico(x, Cz_pred, "C(z)", y_true=Cz_true)
-            img_q.src = gerar_grafico(x, qz_pred, "q(z)", y_true=qz_true)
-            img_T.src = gerar_grafico(x, Tz_pred, "T(z)", y_true=Tz_true)
-            img_Q.src = gerar_grafico(x, Qt_pred, "Qtot(t)", y_true=Qt_true)
+            x_leito = np.arange(BLOCK_SIZE)
+            x_tempo = np.arange(1, len(y_true_vec), len(y_true_vec)/BLOCK_SIZE) if y_true_vec is not None else np.arange(BLOCK_SIZE)
+
+            img_C.src = gerar_grafico(x_leito, Cz_pred, "C(z)", eixo_x="z (posição no leito)", eixo_y="C (mol/m³)", y_true=Cz_true)
+            img_q.src = gerar_grafico(x_leito, qz_pred, "q(z)", eixo_x="z (posição no leito)", eixo_y="q (mol/kg)", y_true=qz_true)
+            img_T.src = gerar_grafico(x_leito, Tz_pred, "T(z)", eixo_x="z (posição no leito)", eixo_y="T (K)", y_true=Tz_true)
+            img_Q.src = gerar_grafico(x_tempo, Qt_pred, "Qtot(t)", eixo_x="t (tempo)", eixo_y="Qtot (mol)", y_true=Qt_true)
 
             status_run.value = "Predição realizada com sucesso."
             status_run.color = "green"
@@ -492,16 +499,16 @@ def main(page: ft.Page):
 
     graphs_view = ft.Column(
         [
-            ft.Text("Gráficos (TRUE vs PRED)", size=25, weight=ft.FontWeight.BOLD),
+            ft.Text("Gráficos (TRUE vs PRED)", size=35, weight=ft.FontWeight.BOLD),
             ft.Row([img_C, img_q], wrap=True, spacing=14),
             ft.Row([img_T, img_Q], wrap=True, spacing=14),
         ],
-        spacing=10,
+        spacing=4, # 10
     )
 
     results_view = ft.Column(
         [
-            ft.Text("Resultados numéricos", size=25, weight=ft.FontWeight.BOLD),
+            ft.Text("Resultados numéricos", size=35, weight=ft.FontWeight.BOLD),
             ft.Text("Finais (true | pred) quando TRUE estiver carregado.", size=12, color="grey"),
             ft.Divider(height=8),
             res_lines[FINAL_COLS[0]],
@@ -514,7 +521,7 @@ def main(page: ft.Page):
 
     validations_view = ft.Column(
         [
-            ft.Text("Validações (sem precisar do dataset)", size=25, weight=ft.FontWeight.BOLD),
+            ft.Text("Validações (sem precisar do dataset)", size=35, weight=ft.FontWeight.BOLD),
             ft.Row(
                 [
                     method_dd,
@@ -533,9 +540,15 @@ def main(page: ft.Page):
 
     content_holder = ft.Container(content=graphs_view, padding=10, expand=True)
 
-    b_g = ft.Button("Gráficos", width=180, height=46)
-    b_r = ft.Button("Resultados", width=180, height=46)
-    b_v = ft.Button("Validações", width=180, height=46)
+    b_g = ft.Button("Gráficos", width=220, height=55, style=ft.ButtonStyle(
+        text_style=ft.TextStyle(size=25, weight=ft.FontWeight.BOLD)
+    ))
+    b_r = ft.Button("Resultados", width=220, height=55, style=ft.ButtonStyle(
+        text_style=ft.TextStyle(size=25, weight=ft.FontWeight.BOLD)
+    ))
+    b_v = ft.Button("Validações", width=220, height=55, style=ft.ButtonStyle(
+        text_style=ft.TextStyle(size=25, weight=ft.FontWeight.BOLD)
+    ))
 
     def set_sidebar_active(btn: ft.Button, active: bool):
         if active:
@@ -565,7 +578,7 @@ def main(page: ft.Page):
     sidebar = ft.Container(
         content=ft.Column(
             [
-                ft.Text("Painel", size=30, weight=ft.FontWeight.BOLD),
+                ft.Text("Painel", size=40, weight=ft.FontWeight.BOLD),
                 ft.Divider(height=8),
                 b_g, b_r, b_v,
             ],
@@ -590,19 +603,23 @@ def main(page: ft.Page):
         bgcolor=CARD_BG,
     )
 
-    btn_rand = ft.Button("Amostra aleatória", on_click=carregar_random, height=BTN_H, width=260, disabled=not dataset_available)
-    btn_load = ft.Button("Carregar idx", on_click=carregar_idx, height=BTN_H, width=260, disabled=not dataset_available)
+    btn_rand = ft.Button("Amostra aleatória", on_click=carregar_random, height=BTN_H, width=260, disabled=not dataset_available, style=ft.ButtonStyle(
+        text_style=ft.TextStyle(size=25, weight=ft.FontWeight.BOLD)
+    ))
+    btn_load = ft.Button("Carregar idx", on_click=carregar_idx, height=BTN_H, width=260, disabled=not dataset_available, style=ft.ButtonStyle(
+        text_style=ft.TextStyle(size=25, weight=ft.FontWeight.BOLD)
+    ))
 
     actions_content = ft.Column(
         [
-            ft.Text("Ações", size=30, weight=ft.FontWeight.BOLD),
+            ft.Text("Ações", size=40, weight=ft.FontWeight.BOLD),#30
             idx_field,
             ft.Row([btn_rand], alignment="center"),
             ft.Row([btn_load], alignment="center"),
-            ft.Divider(22),
-            status_true,
-            status_run,
-            ft.Divider(height=22),
+            #ft.Divider(22),
+            #status_true,
+            #status_run,
+            #ft.Divider(height=22),
             ft.Row([btn_run], alignment="center"),
             ft.Container(height=8),
         ],
@@ -615,14 +632,14 @@ def main(page: ft.Page):
         padding=14,
         border_radius=12,
         bgcolor=CARD_BG,
-        width=330,
+        width=330, # 330
         height=CARD_H,
     )
 
     inputs_card = ft.Container(
         content=ft.Column(
             [
-                ft.Text("Entradas do modelo (22 parâmetros)", size=30, weight=ft.FontWeight.BOLD),
+                ft.Text("Entradas do modelo (22 parâmetros)", size=40, weight=ft.FontWeight.BOLD),
                 ft.Row(campos, wrap=True, spacing=12, run_spacing=12),
             ],
             spacing=10,

@@ -1,20 +1,4 @@
-# -*- coding: utf-8 -*-
-"""
-Compara duas validações do ADSORPTION_NN (EPS vs MASKED) para o MESMO tag.
 
-Esperado:
-outputs/adsorption/inference/<TAG>/eps/
-    metricas_por_bloco_val.csv
-    metricas_finais_individuais.csv
-
-outputs/adsorption/inference/<TAG>/masked/
-    metricas_por_bloco_val.csv
-    metricas_finais_individuais.csv
-
-Gera:
-- outputs/adsorption/inference/<TAG>/compare_validations_<TAG>.csv
-- outputs/adsorption/inference/<TAG>/compare_summary_<TAG>.txt
-"""
 
 import sys
 import argparse
