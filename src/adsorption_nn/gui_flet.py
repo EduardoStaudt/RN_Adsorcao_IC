@@ -92,7 +92,7 @@ if not OUTPUT_COLS:
         [f"C_z{i}" for i in range(BLOCK_SIZE)] +
         [f"q_z{i}" for i in range(BLOCK_SIZE)] +
         [f"T_z{i}" for i in range(BLOCK_SIZE)] +
-        [f"Qtot_t{i}" for i in range(BLOCK_SIZE)]
+        ["Qtot_final"] # tirei o for de plot
     )
 
 LABELS = {
@@ -143,14 +143,14 @@ def gerar_grafico(x, y_pred, titulo, eixo_x, eixo_y, y_true=None):
     return b64_png(fig)
 
 
-def split_208(y_vec: np.ndarray):
+def split_158(y_vec: np.ndarray):
     y_vec = np.asarray(y_vec, dtype=float).reshape(-1)
     finals = y_vec[0:4]
     Cz = y_vec[4:4 + BLOCK_SIZE]
     qz = y_vec[4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE]
     Tz = y_vec[4 + 2 * BLOCK_SIZE:4 + 3 * BLOCK_SIZE]
-    Qt = y_vec[4 + 3 * BLOCK_SIZE:4 + 4 * BLOCK_SIZE]
-    return finals, Cz, qz, Tz, Qt
+    qtot_final = float(y_vec[4 + 3 * BLOCK_SIZE])
+    return finals, Cz, qz, Tz, qtot_final
 
 
 # -----------------------------------------------------------------------------
@@ -276,7 +276,7 @@ scaler_out = joblib.load(SCALER_OUT_PATH)
 
 
 def main(page: ft.Page):
-    page.title = "Predição - Adsorção (22 -> 208)"
+    page.title = "Predição - Adsorção (22 -> 158)"
     page.scroll = "always"
     page.window.width = 1500
     page.window.height = 930
@@ -387,7 +387,7 @@ def main(page: ft.Page):
     img_C = ft.Image(src=PLACEHOLDER_SRC, width=470)
     img_q = ft.Image(src=PLACEHOLDER_SRC, width=470)
     img_T = ft.Image(src=PLACEHOLDER_SRC, width=470)
-    img_Q = ft.Image(src=PLACEHOLDER_SRC, width=470)
+    qtot_text = ft.Text("Qtot_final: -", size=20, weight=ft.FontWeight.BOLD)
 
     res_lines = {c: ft.Text(f"{c}: -", size=16) for c in FINAL_COLS}
 
@@ -456,20 +456,27 @@ def main(page: ft.Page):
         try:
             valores = [float(c.value.replace(",", ".")) for c in campos]
             X = np.array(valores, dtype=float).reshape(1, -1)
+
             expected = int(getattr(scaler_in, "n_features_in_", X.shape[1]))
             if X.shape[1] != expected:
                 raise ValueError(f"Scaler espera {expected} features, mas recebeu {X.shape[1]}.")
+
             Xn = scaler_in.transform(X)
             y_norm = model.predict(Xn, verbose=0)
             y_pred = scaler_out.inverse_transform(y_norm).reshape(-1)
 
             y_true_vec = true_state["y_true"] if true_state["has_true"] else None
-            finals_pred, Cz_pred, qz_pred, Tz_pred, Qt_pred = split_208(y_pred)
+
+            finals_pred, Cz_pred, qz_pred, Tz_pred, qtot_pred = split_158(y_pred)
 
             if y_true_vec is not None:
-                finals_true, Cz_true, qz_true, Tz_true, Qt_true = split_208(y_true_vec)
+                finals_true, Cz_true, qz_true, Tz_true, qtot_true = split_158(y_true_vec)
+                qz_true_sum = float(np.sum(qz_true))
             else:
-                finals_true = Cz_true = qz_true = Tz_true = Qt_true = None
+                finals_true = Cz_true = qz_true = Tz_true = qtot_true = None
+                qz_true_sum = None
+
+            qz_pred_sum = float(np.sum(qz_pred))
 
             for i, name in enumerate(FINAL_COLS):
                 if finals_true is not None:
@@ -478,20 +485,48 @@ def main(page: ft.Page):
                     res_lines[name].value = f"{name}: pred={finals_pred[i]:.6g}"
 
             x_leito = np.arange(BLOCK_SIZE)
-            x_tempo = np.arange(1, len(y_true_vec), len(y_true_vec)/BLOCK_SIZE) if y_true_vec is not None else np.arange(BLOCK_SIZE)
 
-            img_C.src = gerar_grafico(x_leito, Cz_pred, "C(z)", eixo_x="z (posição no leito)", eixo_y="C (mol/m³)", y_true=Cz_true)
-            img_q.src = gerar_grafico(x_leito, qz_pred, "q(z)", eixo_x="z (posição no leito)", eixo_y="q (mol/kg)", y_true=qz_true)
-            img_T.src = gerar_grafico(x_leito, Tz_pred, "T(z)", eixo_x="z (posição no leito)", eixo_y="T (K)", y_true=Tz_true)
-            img_Q.src = gerar_grafico(x_tempo, Qt_pred, "Qtot(t)", eixo_x="t (tempo)", eixo_y="Qtot (mol)", y_true=Qt_true)
+            img_C.src = gerar_grafico(
+                x_leito, Cz_pred, "C(z)",
+                eixo_x="z (posição no leito)",
+                eixo_y="C (mol/m³)",
+                y_true=Cz_true
+            )
+
+            img_q.src = gerar_grafico(
+                x_leito, qz_pred, "q(z)",
+                eixo_x="z (posição no leito)",
+                eixo_y="q (mol/kg)",
+                y_true=qz_true
+            )
+
+            img_T.src = gerar_grafico(
+                x_leito, Tz_pred, "T(z)",
+                eixo_x="z (posição no leito)",
+                eixo_y="T (K)",
+                y_true=Tz_true
+            )
+
+            if qtot_true is not None:
+                qtot_text.value = (
+                    f"Qtot_final(rede): true={qtot_true:.6g} | pred={qtot_pred:.6g} | "
+                    f"soma(q_z): true={qz_true_sum:.6g} | pred={qz_pred_sum:.6g}"
+                )
+            else:
+                qtot_text.value = (
+                    f"Qtot_final(rede): pred={qtot_pred:.6g} | "
+                    f"soma(q_z): pred={qz_pred_sum:.6g}"
+                )
 
             status_run.value = "Predição realizada com sucesso."
             status_run.color = "green"
             set_run_button_state("ok")
+
         except Exception as err:
             status_run.value = f"Erro: {err}"
             status_run.color = "red"
             set_run_button_state("err")
+
         page.update()
 
     btn_run.on_click = rodar_modelo
@@ -501,9 +536,11 @@ def main(page: ft.Page):
         [
             ft.Text("Gráficos (TRUE vs PRED)", size=35, weight=ft.FontWeight.BOLD),
             ft.Row([img_C, img_q], wrap=True, spacing=14),
-            ft.Row([img_T, img_Q], wrap=True, spacing=14),
+            ft.Row([img_T], wrap=True, spacing=14),
+            ft.Divider(height=10),
+            qtot_text,
         ],
-        spacing=4, # 10
+        spacing=4,
     )
 
     results_view = ft.Column(
@@ -616,10 +653,10 @@ def main(page: ft.Page):
             idx_field,
             ft.Row([btn_rand], alignment="center"),
             ft.Row([btn_load], alignment="center"),
-            #ft.Divider(22),
-            #status_true,
-            #status_run,
-            #ft.Divider(height=22),
+            ft.Divider(22),
+            status_true,
+            status_run,
+            ft.Divider(height=22),
             ft.Row([btn_run], alignment="center"),
             ft.Container(height=8),
         ],

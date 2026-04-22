@@ -56,23 +56,21 @@ FRONT_TO_MODEL_KEY = {
 FINAL_COLS = ["C_out_final", "q_out_final", "T_out_final", "N_ads_final"]
 
 
-def _split_208(y_vec: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Divide o vetor (208,) em blocos.
+def _split_158(y_vec: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
+#    Divide o vetor (158,) em blocos
+#    - finais: 0..3
+#    - C_z: 4..54
+#    - q_z: 55..105
+#    - T_z: 106..156
+#    - Qtot_t: 157
 
-    índices:
-    - finais: 0..3
-    - C_z:    4..54
-    - q_z:    55..105
-    - T_z:    106..156
-    - Qtot_t: 157..207
-    """
     y_vec = y_vec.reshape(-1)
-    finals = y_vec[0:4]
-    Cz = y_vec[4:4 + BLOCK_SIZE]
-    qz = y_vec[4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE]
-    Tz = y_vec[4 + 2 * BLOCK_SIZE:4 + 3 * BLOCK_SIZE]
-    Qt = y_vec[4 + 3 * BLOCK_SIZE:4 + 4 * BLOCK_SIZE]
-    return finals, Cz, qz, Tz, Qt
+    finals = y_vec[0:4] # 4 primeiros
+    Cz = y_vec[4:4 + BLOCK_SIZE] # [4:55]
+    qz = y_vec[4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE] # [55:106]
+    Tz = y_vec[4 + 2 * BLOCK_SIZE:4 + 3 * BLOCK_SIZE] # [106:157]
+    Qtot_final = float(y_vec[4 + 3 * BLOCK_SIZE]) # [157]
+    return finals, Cz, qz, Tz, Qtot_final
 
 
 def _as_float(x: Any) -> float:
@@ -89,8 +87,8 @@ class AdsorptionPredictor:
     """Carrega modelo e scalers e executa predições."""
 
     def __init__(self, model_path: Optional[Path] = None,
-                 scaler_in_path: Optional[Path] = None,
-                 scaler_out_path: Optional[Path] = None) -> None:
+                scaler_in_path: Optional[Path] = None,
+                scaler_out_path: Optional[Path] = None) -> None:
         cfg.ensure_dirs()
 
         self.model_path = model_path or cfg.ADS_BEST_MODEL
@@ -163,10 +161,10 @@ class AdsorptionPredictor:
         y_norm = self.model.predict(Xn, verbose=0)
         y = self.scaler_out.inverse_transform(y_norm).reshape(-1)
 
-        if y.shape[0] != 208:
-            raise ValueError(f"Modelo retornou {y.shape[0]} saídas, esperado 208.")
+        if y.shape[0] != 158: # alteradp 
+            raise ValueError(f"Modelo retornou {y.shape[0]} saídas, esperado 158.")
 
-        finals, Cz, qz, Tz, Qt = _split_208(y)
+        finals, Cz, qz, Tz, Qtot_final = _split_158(y)
 
         # Eixos (sempre com 51 pontos no modelo atual)
         t_points = np.linspace(0.0, t_end, BLOCK_SIZE)
@@ -182,9 +180,12 @@ class AdsorptionPredictor:
             "T_out_final": float(finals[2]),
             "N_ads_final": float(finals[3]),
 
+            "Qtot_final": float(Qtot_final),
+            "q_z_sum": float(np.sum(qz)),
+
             "t_points": t_points.tolist(),
             "C_out_points": C_out_points.tolist(),
-            "Qtot_points": Qt.tolist(),
+            #"Qtot_points": Qt.tolist(),
 
             "z_points": z_points.tolist(),
             "C_z_points": Cz.tolist(),

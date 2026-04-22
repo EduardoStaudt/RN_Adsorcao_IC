@@ -11,6 +11,16 @@ from sklearn.preprocessing import StandardScaler
 import joblib
 import matplotlib.pyplot as plt
 
+
+# REFACTOR:
+# - Adicionar o Optuna
+# - Analisar o Cross- Validation 
+# - adicionar o stick-optimize e hyperoth
+# - utilizar e entender metricas no processo de treinamento
+# - começar a desencolver a interface em flutter nem que seja só uma tela branca
+# - tirar o Q_tot ao longo do tempo ou leito e tranformar em um unico valor final sendo ele a soma dos q_z
+
+
 # TODO: PARA TREINAR SÓ O O MODELO FINAL É SÓ RODAR COM O  USE_TUNER = False (ta na linha 177)
 
 # -------------------------
@@ -71,18 +81,22 @@ if missing_f:
 Cz_cols   = cols_by_prefix(all_cols, "C_z")
 qz_cols   = cols_by_prefix(all_cols, "q_z")
 Tz_cols   = cols_by_prefix(all_cols, "T_z")
-Qtot_cols = cols_by_prefix(all_cols, "Qtot_t")
+#Qtot_cols = cols_by_prefix(all_cols, "Qtot_t") nao precisa mais
 
-for name, cols in [("C_z", Cz_cols), ("q_z", qz_cols), ("T_z", Tz_cols), ("Qtot_t", Qtot_cols)]:
+for name, cols in [("C_z", Cz_cols), ("q_z", qz_cols), ("T_z", Tz_cols)]:
+    # tirei o Qtot_cols
     if len(cols) != BLOCK_SIZE:
         raise ValueError(f"[ERRO] Esperava {BLOCK_SIZE} colunas para {name}, mas achei {len(cols)}.")
 
-PROFILE_COLS = Cz_cols + qz_cols + Tz_cols + Qtot_cols  # 204
-OUTPUT_COLS = FINAL_COLS + PROFILE_COLS                 # 208
+# cria a colola Qtot_final sendo ela a soma dos q_z
+df["Qtot_final"] = df[qz_cols].sum(axis=1) # pega a soma de todas as linhas axis=1
+
+PROFILE_COLS = Cz_cols + qz_cols + Tz_cols
+OUTPUT_COLS = FINAL_COLS + PROFILE_COLS + ["Qtot_final"]
 
 print("\n============= Dimensões esperadas =============")
 print("Entradas (X):", len(PARAM_COLS))
-print("Saídas (Y):  ", len(OUTPUT_COLS), "(4 finais + 204 perfis)")
+print("Saídas (Y):  ", len(OUTPUT_COLS), "(4 finais + 153 perfis + 1 Qtot_final)")
 print("================================================\n")
 
 # =======================================================
@@ -120,7 +134,7 @@ cfg.ADS_META.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding
 print("[OK] Salvei scalers e meta em:", cfg.ADS_MODELS_DIR)
 
 # =======================================================
-# 5) Loss ponderada por blocos
+# 5) Loss ponderada por blocos ########################ALTERAR####################
 # =======================================================
 W_FINAL = 1.0
 W_CZ = 1.0
@@ -134,7 +148,7 @@ def weighted_mse(y_true, y_pred):
     e_Cz    = err2[:, 4:4 + BLOCK_SIZE]
     e_qz    = err2[:, 4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE]
     e_Tz    = err2[:, 4 + 2 * BLOCK_SIZE:4 + 3 * BLOCK_SIZE]
-    e_Qtot  = err2[:, 4 + 3 * BLOCK_SIZE:4 + 4 * BLOCK_SIZE]
+    e_Qtot = err2[:, 4 + 3 * BLOCK_SIZE :4 + 3 * BLOCK_SIZE + 1]
     return (
         W_FINAL * tf.reduce_mean(e_final) +
         W_CZ    * tf.reduce_mean(e_Cz) +
@@ -265,37 +279,3 @@ plt.savefig(cfg.ADS_CURVE_PATH, dpi=300, bbox_inches="tight")
 plt.close(fig)
 print("[OK] Curva salva em:", cfg.ADS_CURVE_PATH)
 
-
-
-# ================== CHECK: finais (true vs pred) ==================
-# Amostra idx=5027
-#   C_out_final: true=0.32126  pred=0.288569
-#   q_out_final: true=0.58299  pred=0.492943
-#   T_out_final: true=303.73  pred=303.484
-#   N_ads_final: true=8.14414  pred=8.30972
-# ------------------------------------------------------------
-# Amostra idx=55391
-#   C_out_final: true=0.570509  pred=0.590907
-#   q_out_final: true=0.0171831  pred=0.0163144
-#   T_out_final: true=308.746  pred=307.785
-#   N_ads_final: true=0.66074  pred=-0.861052
-# ------------------------------------------------------------
-# Amostra idx=1442
-#   C_out_final: true=4.51066  pred=4.43411
-#   q_out_final: true=0.0178838  pred=0.0364256
-#   T_out_final: true=299.685  pred=300.824
-#   N_ads_final: true=2.1431  pred=3.71115
-# ------------------------------------------------------------
-# Amostra idx=84926
-#   C_out_final: true=0.121551  pred=-0.105244
-#   q_out_final: true=0.03779  pred=-0.0732541
-#   T_out_final: true=295.296  pred=292.716
-#   N_ads_final: true=17.4433  pred=24.5958
-# ------------------------------------------------------------
-# Amostra idx=63743
-#   C_out_final: true=3.65541  pred=3.63783
-#   q_out_final: true=0.0783555  pred=0.0936589
-#   T_out_final: true=305.414  pred=306.28
-#   N_ads_final: true=9.93464  pred=13.9816
-# ------------------------------------------------------------
-# ====================================================================
