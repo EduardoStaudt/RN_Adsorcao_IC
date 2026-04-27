@@ -91,8 +91,8 @@ if not OUTPUT_COLS:
     OUTPUT_COLS = FINAL_COLS + (
         [f"C_z{i}" for i in range(BLOCK_SIZE)] +
         [f"q_z{i}" for i in range(BLOCK_SIZE)] +
-        [f"T_z{i}" for i in range(BLOCK_SIZE)] +
-        ["Qtot_final"] # tirei o for de plot
+        [f"T_z{i}" for i in range(BLOCK_SIZE)]
+        # ["Qtot_final"] # tirei o for de plot
     )
 
 LABELS = {
@@ -142,16 +142,22 @@ def gerar_grafico(x, y_pred, titulo, eixo_x, eixo_y, y_true=None):
     ax.legend()
     return b64_png(fig)
 
+def sumQtot_final(qz: np.ndarray, L: float, D_col: float, rho_B: float) -> float:
+    qz = np.asarray(qz, dtype=float).reshape(-1)
+    z = np.linspace(0.0, float(L), qz.size)
+    A = np.pi * (float(D_col) ** 2) / 4.0
+    integral = np.trapezoid(qz, z) if hasattr(np, "trapezoid") else np.trapz(qz, z)
+    return float(A * float(rho_B) * integral)
 
-def split_158(y_vec: np.ndarray):
+
+def split_157(y_vec: np.ndarray):
     y_vec = np.asarray(y_vec, dtype=float).reshape(-1)
     finals = y_vec[0:4]
     Cz = y_vec[4:4 + BLOCK_SIZE]
     qz = y_vec[4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE]
     Tz = y_vec[4 + 2 * BLOCK_SIZE:4 + 3 * BLOCK_SIZE]
-    qtot_final = float(y_vec[4 + 3 * BLOCK_SIZE])
-    return finals, Cz, qz, Tz, qtot_final
-
+    # qtot_final = float(y_vec[4 + 3 * BLOCK_SIZE])
+    return finals, Cz, qz, Tz # qtot_final
 
 # -----------------------------------------------------------------------------
 # LATEST: aceita path absoluto OU relativo ao ROOT
@@ -276,7 +282,7 @@ scaler_out = joblib.load(SCALER_OUT_PATH)
 
 
 def main(page: ft.Page):
-    page.title = "Predição - Adsorção (22 -> 158)"
+    page.title = "Predição - Adsorção (22 -> 157)"
     page.scroll = "always"
     page.window.width = 1500
     page.window.height = 930
@@ -289,7 +295,7 @@ def main(page: ft.Page):
 
     dataset_available = DATA_NPZ_PATH.exists() or DATA_CSV_PATH.exists()
 
-    true_state = {"has_true": False, "idx": None, "y_true": None}
+    true_state = {"has_true": False, "idx": None, "x_true": None, "y_true": None}
     random_state = {"order": None, "pos": 0}
 
     # defaults alinhados com PARAM_COLS
@@ -340,12 +346,14 @@ def main(page: ft.Page):
             set_inputs_from_x(x)
             true_state["has_true"] = True
             true_state["idx"] = idx
+            true_state["x_true"] = x
             true_state["y_true"] = y
             status_true.value = f"TRUE: carregado (idx={idx})"
             status_true.color = "green"
         except Exception as err:
             true_state["has_true"] = False
             true_state["idx"] = None
+            true_state["x_true"] = None
             true_state["y_true"] = None
             status_true.value = f"TRUE: erro -> {err}"
             status_true.color = "red"
@@ -369,12 +377,14 @@ def main(page: ft.Page):
             set_inputs_from_x(x)
             true_state["has_true"] = True
             true_state["idx"] = idx
+            true_state["x_true"] = x
             true_state["y_true"] = y
             status_true.value = f"TRUE: carregado (idx={idx})"
             status_true.color = "green"
         except Exception as err:
             true_state["has_true"] = False
             true_state["idx"] = None
+            true_state["x_true"] = None
             true_state["y_true"] = None
             status_true.value = f"TRUE: erro -> {err}"
             status_true.color = "red"
@@ -466,17 +476,26 @@ def main(page: ft.Page):
             y_pred = scaler_out.inverse_transform(y_norm).reshape(-1)
 
             y_true_vec = true_state["y_true"] if true_state["has_true"] else None
+            x_true_vec = true_state["x_true"] if true_state["has_true"] else None
 
-            finals_pred, Cz_pred, qz_pred, Tz_pred, qtot_pred = split_158(y_pred)
+            finals_pred, Cz_pred, qz_pred, Tz_pred = split_157(y_pred)
 
-            if y_true_vec is not None:
-                finals_true, Cz_true, qz_true, Tz_true, qtot_true = split_158(y_true_vec)
-                qz_true_sum = float(np.sum(qz_true))
+            L_pred = float(X[0, PARAM_COLS.index("L")])
+            Dcol_pred = float(X[0, PARAM_COLS.index("D_col")])
+            rhoB_pred = float(X[0, PARAM_COLS.index("rho_B")])
+            qtot_pred = sumQtot_final(qz_pred, L=L_pred, D_col=Dcol_pred, rho_B=rhoB_pred)
+
+            if y_true_vec is not None and x_true_vec is not None:
+                finals_true, Cz_true, qz_true, Tz_true = split_157(y_true_vec)
+
+                L_true = float(x_true_vec[PARAM_COLS.index("L")])
+                Dcol_true = float(x_true_vec[PARAM_COLS.index("D_col")])
+                rhoB_true = float(x_true_vec[PARAM_COLS.index("rho_B")])
+
+                qtot_true = sumQtot_final(qz_true, L=L_true, D_col=Dcol_true, rho_B=rhoB_true)
             else:
-                finals_true = Cz_true = qz_true = Tz_true = qtot_true = None
-                qz_true_sum = None
-
-            qz_pred_sum = float(np.sum(qz_pred))
+                finals_true = Cz_true = qz_true = Tz_true = None
+                qtot_true = None
 
             for i, name in enumerate(FINAL_COLS):
                 if finals_true is not None:
@@ -508,15 +527,9 @@ def main(page: ft.Page):
             )
 
             if qtot_true is not None:
-                qtot_text.value = (
-                    f"Qtot_final(rede): true={qtot_true:.6g} | pred={qtot_pred:.6g} | "
-                    f"soma(q_z): true={qz_true_sum:.6g} | pred={qz_pred_sum:.6g}"
-                )
+                qtot_text.value = f"Qtot_final(calculado): true={qtot_true:.6g} | pred={qtot_pred:.6g}"
             else:
-                qtot_text.value = (
-                    f"Qtot_final(rede): pred={qtot_pred:.6g} | "
-                    f"soma(q_z): pred={qz_pred_sum:.6g}"
-                )
+                qtot_text.value = f"Qtot_final(calculado): pred={qtot_pred:.6g}"
 
             status_run.value = "Predição realizada com sucesso."
             status_run.color = "green"

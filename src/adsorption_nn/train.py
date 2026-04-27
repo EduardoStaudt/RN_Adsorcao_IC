@@ -6,7 +6,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from tensorflow.keras import layers, models, regularizers
 from sklearn.preprocessing import StandardScaler
 import joblib
 import matplotlib.pyplot as plt
@@ -89,14 +88,14 @@ for name, cols in [("C_z", Cz_cols), ("q_z", qz_cols), ("T_z", Tz_cols)]:
         raise ValueError(f"[ERRO] Esperava {BLOCK_SIZE} colunas para {name}, mas achei {len(cols)}.")
 
 # cria a colola Qtot_final sendo ela a soma dos q_z
-df["Qtot_final"] = df[qz_cols].sum(axis=1) # pega a soma de todas as linhas axis=1
+# df["Qtot_final"] = df[qz_cols].sum(axis=1) # pega a soma de todas as linhas axis=1
 
 PROFILE_COLS = Cz_cols + qz_cols + Tz_cols
-OUTPUT_COLS = FINAL_COLS + PROFILE_COLS + ["Qtot_final"]
+OUTPUT_COLS = FINAL_COLS + PROFILE_COLS
 
 print("\n============= Dimensões esperadas =============")
 print("Entradas (X):", len(PARAM_COLS))
-print("Saídas (Y):  ", len(OUTPUT_COLS), "(4 finais + 153 perfis + 1 Qtot_final)")
+print("Saídas (Y):  ", len(OUTPUT_COLS), "(4 finais + 153 perfis)")
 print("================================================\n")
 
 # =======================================================
@@ -136,26 +135,26 @@ print("[OK] Salvei scalers e meta em:", cfg.ADS_MODELS_DIR)
 # =======================================================
 # 5) Loss ponderada por blocos ########################ALTERAR####################
 # =======================================================
-W_FINAL = 1.0
-W_CZ = 1.0
-W_QZ = 1.0
-W_TZ = 1.0
-W_QTOT = 1.0
+# W_FINAL = 1.0
+# W_CZ = 1.0
+# W_QZ = 1.0
+# W_TZ = 1.0
+# W_QTOT = 1.0
 
-def weighted_mse(y_true, y_pred):
-    err2 = tf.square(y_true - y_pred)
-    e_final = err2[:, 0:4]
-    e_Cz    = err2[:, 4:4 + BLOCK_SIZE]
-    e_qz    = err2[:, 4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE]
-    e_Tz    = err2[:, 4 + 2 * BLOCK_SIZE:4 + 3 * BLOCK_SIZE]
-    e_Qtot = err2[:, 4 + 3 * BLOCK_SIZE :4 + 3 * BLOCK_SIZE + 1]
-    return (
-        W_FINAL * tf.reduce_mean(e_final) +
-        W_CZ    * tf.reduce_mean(e_Cz) +
-        W_QZ    * tf.reduce_mean(e_qz) +
-        W_TZ    * tf.reduce_mean(e_Tz) +
-        W_QTOT  * tf.reduce_mean(e_Qtot)
-    )
+# def weighted_mse(y_true, y_pred):
+#     err2 = tf.square(y_true - y_pred)
+#     e_final = err2[:, 0:4]
+#     e_Cz    = err2[:, 4:4 + BLOCK_SIZE]
+#     e_qz    = err2[:, 4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE]
+#     e_Tz    = err2[:, 4 + 2 * BLOCK_SIZE:4 + 3 * BLOCK_SIZE]
+#     e_Qtot = err2[:, 4 + 3 * BLOCK_SIZE :4 + 3 * BLOCK_SIZE + 1]
+#     return (
+#         W_FINAL * tf.reduce_mean(e_final) +
+#         W_CZ    * tf.reduce_mean(e_Cz) +
+#         W_QZ    * tf.reduce_mean(e_qz) +
+#         W_TZ    * tf.reduce_mean(e_Tz) +
+#         W_QTOT  * tf.reduce_mean(e_Qtot)
+#     )
 
 # =======================================================
 # 6) Modelo
@@ -164,18 +163,18 @@ input_dim = X.shape[1]
 output_dim = Y.shape[1]
 
 def build_model(n1=352, n2=352, n3=176, dropout=0.10, l2_reg=1e-5, lr=5e-4):
-    model = models.Sequential([
-        layers.Input(shape=(input_dim,)),
-        layers.Dense(n1, activation="elu", kernel_regularizer=regularizers.l2(l2_reg)),
-        layers.Dropout(dropout),
-        layers.Dense(n2, activation="elu", kernel_regularizer=regularizers.l2(l2_reg)),
-        layers.Dropout(dropout),
-        layers.Dense(n3, activation="elu", kernel_regularizer=regularizers.l2(l2_reg)),
-        layers.Dense(output_dim, activation="linear"),
+    model = tf.keras.Sequential([
+        tf.keras.layers.Input(shape=(input_dim,)),
+        tf.keras.layers.Dense(n1, activation="elu", kernel_regularizer=tf.keras.regularizers.l2(l2_reg)),
+        tf.keras.layers.Dropout(dropout),
+        tf.keras.layers.Dense(n2, activation="elu", kernel_regularizer=tf.keras.regularizers.l2(l2_reg)),
+        tf.keras.layers.Dropout(dropout),
+        tf.keras.layers.Dense(n3, activation="elu", kernel_regularizer=tf.keras.regularizers.l2(l2_reg)),
+        tf.keras.layers.Dense(output_dim, activation="linear"),
     ])
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
-        loss=weighted_mse,
+        loss="mse",
         metrics=[
             tf.keras.metrics.MeanAbsoluteError(name="mae"),
             tf.keras.metrics.RootMeanSquaredError(name="rmse"),
