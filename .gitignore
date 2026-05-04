@@ -66,6 +66,8 @@ compare_*.txt
 # raw: sempre fora do git
 data/raw/
 data/raw/**
+data/newdataset/
+data/newdataset/**
 
 # adsorption FULL: fora do git (vai via Drive)
 data/processed/adsorption/dataset_FULL.npz
