@@ -3,6 +3,7 @@ import re
 import sys
 from pathlib import Path
 
+import optuna
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -10,17 +11,18 @@ from sklearn.preprocessing import StandardScaler
 import joblib
 import matplotlib.pyplot as plt
 
+#++++++++++++++++++++++++++++++++++++++++++++#
+#          Se não tiver UV baixar            #
+# Rodar o UV com o comando paara baixar tudo #
+#++++++++++++++++++++++++++++++++++++++++++++#
 
 # REFACTOR:
-# - Adicionar o Optuna
-# - Analisar o Cross- Validation 
-# - adicionar o stick-optimize e hyperoth
-# - utilizar e entender metricas no processo de treinamento
-# - começar a desencolver a interface em flutter nem que seja só uma tela branca
-# - tirar o Q_tot ao longo do tempo ou leito e tranformar em um unico valor final sendo ele a soma dos q_z
-
-
-# TODO: PARA TREINAR SÓ O O MODELO FINAL É SÓ RODAR COM O  USE_TUNER = False (ta na linha 177)
+# - Adicionar o Optuna ✅
+# - Analisar o Cross-Validation 
+# - adicionar o stick-optimize e hyperoth ❌ nao vou mais fazer todos fazem a mesma coisa mas optuna é bem melhor
+# - utilizar e entender metricas no processo de treinamento ✅
+# - começar a desencolver a interface em flutter nem que seja só uma tela branca 
+# - tirar o Q_tot ao longo do tempo ou leito e tranformar em um unico valor final sendo ele a soma dos q_z ✅
 
 # -------------------------
 # Bootstrap import config
@@ -36,7 +38,7 @@ cfg.ensure_dirs()
 print("[DEBUG] ROOT =", cfg.ROOT)
 print("[DEBUG] CSV  =", cfg.ADS_FULL_CSV)
 print("[DEBUG] OUT_TRAIN =", cfg.ADS_OUT_TRAIN)
-print("[DEBUG] OUT_TUNER =", cfg.ADS_OUT_TUNER)
+print("[DEBUG] OUT_OPTUNA =", cfg.ADS_OUT_OPTUNA)
 print("[DEBUG] MODELS =", cfg.ADS_MODELS_DIR)
 
 if not cfg.ADS_FULL_CSV.exists():
@@ -133,45 +135,19 @@ cfg.ADS_META.write_text(json.dumps(meta, indent=2, ensure_ascii=False), encoding
 print("[OK] Salvei scalers e meta em:", cfg.ADS_MODELS_DIR)
 
 # =======================================================
-# 5) Loss ponderada por blocos ########################ALTERAR####################
-# =======================================================
-# W_FINAL = 1.0
-# W_CZ = 1.0
-# W_QZ = 1.0
-# W_TZ = 1.0
-# W_QTOT = 1.0
-
-# def weighted_mse(y_true, y_pred):
-#     err2 = tf.square(y_true - y_pred)
-#     e_final = err2[:, 0:4]
-#     e_Cz    = err2[:, 4:4 + BLOCK_SIZE]
-#     e_qz    = err2[:, 4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE]
-#     e_Tz    = err2[:, 4 + 2 * BLOCK_SIZE:4 + 3 * BLOCK_SIZE]
-#     e_Qtot = err2[:, 4 + 3 * BLOCK_SIZE :4 + 3 * BLOCK_SIZE + 1]
-#     return (
-#         W_FINAL * tf.reduce_mean(e_final) +
-#         W_CZ    * tf.reduce_mean(e_Cz) +
-#         W_QZ    * tf.reduce_mean(e_qz) +
-#         W_TZ    * tf.reduce_mean(e_Tz) +
-#         W_QTOT  * tf.reduce_mean(e_Qtot)
-#     )
-
-# =======================================================
-# 6) Modelo
+# 5) Modelo
 # =======================================================
 input_dim = X.shape[1]
 output_dim = Y.shape[1]
 
-def build_model(n1=352, n2=352, n3=176, dropout=0.10, l2_reg=1e-5, lr=5e-4):
-    model = tf.keras.Sequential([
-        tf.keras.layers.Input(shape=(input_dim,)),
-        tf.keras.layers.Dense(n1, activation="elu", kernel_regularizer=tf.keras.regularizers.l2(l2_reg)),
-        tf.keras.layers.Dropout(dropout),
-        tf.keras.layers.Dense(n2, activation="elu", kernel_regularizer=tf.keras.regularizers.l2(l2_reg)),
-        tf.keras.layers.Dropout(dropout),
-        tf.keras.layers.Dense(n3, activation="elu", kernel_regularizer=tf.keras.regularizers.l2(l2_reg)),
-        tf.keras.layers.Dense(output_dim, activation="linear"),
-    ])
+def build_model(n_layers=3, n_units=352, activation="elu", dropout=0.10, l2_reg=1e-5, lr=5e-4):
+    reg = tf.keras.regularizers.l2(l2_reg)
+    layers = [tf.keras.layers.Input(shape=(input_dim,))]
+    for _ in range(n_layers):
+        layers.append(tf.keras.layers.Dense(n_units, activation=activation, kernel_regularizer=reg))
+        layers.append(tf.keras.layers.Dropout(dropout))
+    layers.append(tf.keras.layers.Dense(output_dim, activation="linear"))
+    model = tf.keras.Sequential(layers)
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=lr),
         loss="mse",
@@ -183,62 +159,97 @@ def build_model(n1=352, n2=352, n3=176, dropout=0.10, l2_reg=1e-5, lr=5e-4):
     return model
 
 # =======================================================
-# 7) Keras Tuner (salvando em outputs/adsorption/training/tuner)
-# Observação: para evitar erro de deletar pasta no OneDrive,
-# usamos project_name único e overwrite=False.
+# 6) Optuna (substitui keras_tuner — espaço de busca equivalente)
+# USE_OPTUNA = True  -> roda busca de HPs com MedianPruner
+# USE_OPTUNA = False -> usa arquitetura fixa (build_model padrão)
 # =======================================================
-USE_TUNER = True
-use_tuner = False
-kt = None
-if USE_TUNER:
-    try:
-        import keras_tuner as kt
-        use_tuner = True
-    except Exception:
-        use_tuner = False
+USE_OPTUNA = True
+use_optuna = USE_OPTUNA
 
 RUN_ID = cfg.now_tag()
 
-if use_tuner:
-    print("[INFO] keras_tuner -> BayesianOptimization")
-    print("[INFO] Logs do tuner em:", cfg.ADS_OUT_TUNER)
+if use_optuna:
+    print("[INFO] Optuna -> MedianPruner + study")
 
-    def HyperModel(hp):
-        n1 = hp.Int("n1", 88, 528, step=44)
-        n2 = hp.Int("n2", 176, 528, step=44)
-        n3 = hp.Int("n3", 88, 264, step=22)
-        dropout = hp.Float("dropout", 0.0, 0.30, step=0.05)
-        l2_reg = hp.Choice("l2_reg", values=[1e-6, 1e-5, 1e-4])
-        lr = hp.Choice("lr", values=[1e-3, 5e-4, 1e-4])
-        return build_model(n1=n1, n2=n2, n3=n3, dropout=dropout, l2_reg=l2_reg, lr=lr)
+    N_TRIALS    = 30
+    TUNE_EPOCHS = 200
+    TUNE_SPLIT  = 0.2
 
-    tuner = kt.BayesianOptimization(
-        HyperModel,
-        objective=kt.Objective("val_rmse", direction="min"),
-        max_trials=30,
-        overwrite=False,                         # evita tentar apagar pastas
-        directory=str(cfg.ADS_OUT_TUNER),
-        project_name=f"adsorption_{RUN_ID}",
+    n_val = int(len(X) * TUNE_SPLIT)
+    X_tr, Y_tr = X[n_val:], Y[n_val:]
+    X_vl, Y_vl = X[:n_val], Y[:n_val]
+
+    class _PruningCallback(tf.keras.callbacks.Callback):
+        """Reporta val_rmse ao Optuna a cada época e poda trials fracos."""
+        def __init__(self, trial, monitor="val_rmse"):
+            super().__init__()
+            self._trial   = trial
+            self._monitor = monitor
+
+        def on_epoch_end(self, epoch, logs=None):
+            val = (logs or {}).get(self._monitor, float("inf"))
+            self._trial.report(val, epoch)
+            if self._trial.should_prune():
+                raise optuna.TrialPruned()
+
+    def optuna_objective(trial):
+        n_layers   = trial.suggest_int("n_layers", 2, 4)
+        n_units    = trial.suggest_int("n_units", 64, 256, step=32)
+        activation = trial.suggest_categorical("activation", ["relu", "elu"])
+        dropout    = trial.suggest_float("dropout", 0.0, 0.2, step=0.05)
+        l2_reg     = trial.suggest_float("l2_reg", 1e-6, 1e-3, log=True)
+        lr         = trial.suggest_float("lr", 1e-4, 1e-2, log=True)
+
+        m = build_model(n_layers=n_layers, n_units=n_units, activation=activation,
+                        dropout=dropout, l2_reg=l2_reg, lr=lr)
+        hist = m.fit(
+            X_tr, Y_tr,
+            validation_data=(X_vl, Y_vl),
+            epochs=TUNE_EPOCHS,
+            batch_size=512,
+            callbacks=[
+                _PruningCallback(trial),
+                tf.keras.callbacks.EarlyStopping(monitor="val_rmse", patience=15, restore_best_weights=True),
+            ],
+            verbose=0,
+        )
+        return min(hist.history.get("val_rmse", [float("inf")]))
+
+    pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=10)
+    _db_uri = (cfg.ADS_OUT_OPTUNA / "optuna_adsorption.db").as_posix()
+    storage = optuna.storages.RDBStorage(f"sqlite:///{_db_uri}")
+    study = optuna.create_study(
+        direction="minimize",
+        pruner=pruner,
+        storage=storage,
+        study_name=f"adsorption_{RUN_ID}",
+        load_if_exists=True,
     )
+    optuna.logging.set_verbosity(optuna.logging.INFO)
+    study.optimize(optuna_objective, n_trials=N_TRIALS, show_progress_bar=True)
 
-    tuner.search(
-        X, Y,
-        validation_split=0.2,
-        epochs=200,
-        batch_size=512,
-        verbose=1
-    )
+    try:
+        import optuna.visualization as vis
+        vis.plot_optimization_history(study).write_html(
+            str(cfg.ADS_OUT_OPTUNA / "opt_history.html"))
+        vis.plot_param_importances(study).write_html(
+            str(cfg.ADS_OUT_OPTUNA / "param_importance.html"))
+        vis.plot_parallel_coordinate(study).write_html(
+            str(cfg.ADS_OUT_OPTUNA / "parallel_coord.html"))
+        print("[OK] Gráficos Optuna salvos em:", cfg.ADS_OUT_OPTUNA)
+    except Exception as e:
+        print(f"[AVISO] Não foi possível gerar gráficos Optuna: {e}")
 
-    best_hp = tuner.get_best_hyperparameters(1)[0]
-    print("[INFO] Best HP:", best_hp.values)
-    cfg.ADS_BEST_HP.write_text(json.dumps(best_hp.values, indent=2), encoding="utf-8")
-    model = tuner.hypermodel.build(best_hp)
+    best = study.best_params
+    print("[INFO] Best HP:", best)
+    cfg.ADS_BEST_HP.write_text(json.dumps(best, indent=2), encoding="utf-8")
+    model = build_model(**best)
 else:
-    print("[INFO] Sem tuner -> arquitetura fixa")
+    print("[INFO] Sem Optuna -> arquitetura fixa")
     model = build_model()
 
 # =======================================================
-# 8) Treino final
+# 7) Treino final
 # =======================================================
 callbacks = [
     tf.keras.callbacks.ReduceLROnPlateau(monitor="val_rmse", factor=0.5, patience=12, verbose=1),
@@ -264,7 +275,7 @@ history = model.fit(
 print("[OK] Modelo salvo em:", cfg.ADS_BEST_MODEL)
 
 # =======================================================
-# 9) Curva na raiz de training
+# 8) Curva na raiz de training
 # =======================================================
 fig = plt.figure(figsize=(8, 5))
 plt.plot(history.history.get("rmse", []), label="rmse")
@@ -278,3 +289,6 @@ plt.savefig(cfg.ADS_CURVE_PATH, dpi=300, bbox_inches="tight")
 plt.close(fig)
 print("[OK] Curva salva em:", cfg.ADS_CURVE_PATH)
 
+#=================================================================================#
+#                Porta que roda o dash board http://localhost:8080                #
+#=================================================================================#
