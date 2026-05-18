@@ -11,10 +11,10 @@ from sklearn.preprocessing import StandardScaler
 import joblib
 import matplotlib.pyplot as plt
 
-#++++++++++++++++++++++++++++++++++++++++++++#
-#          Se não tiver UV baixar            #
-# Rodar o UV com o comando paara baixar tudo #
-#++++++++++++++++++++++++++++++++++++++++++++#
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+#                Se não tiver UV baixar                  #
+#  Rodar o UV com o uv sync no terminal para baixar tudo #
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
 
 # REFACTOR:
 # - Adicionar o Optuna ✅
@@ -35,8 +35,8 @@ if str(SRC_DIR) not in sys.path:
 import adsorption_nn.config as cfg
 cfg.ensure_dirs()
 
-print("[DEBUG] ROOT =", cfg.ROOT)
-print("[DEBUG] CSV  =", cfg.ADS_FULL_CSV)
+print("[DEBUG] ROOT =", cfg.ROOT) ##Raiz do projeto
+print("[DEBUG] CSV  =", cfg.ADS_FULL_CSV) ## DataSet
 print("[DEBUG] OUT_TRAIN =", cfg.ADS_OUT_TRAIN)
 print("[DEBUG] OUT_OPTUNA =", cfg.ADS_OUT_OPTUNA)
 print("[DEBUG] MODELS =", cfg.ADS_MODELS_DIR)
@@ -171,7 +171,7 @@ RUN_ID = cfg.now_tag()
 if use_optuna:
     print("[INFO] Optuna -> MedianPruner + study")
 
-    N_TRIALS    = 30
+    N_TRIALS    = 64
     TUNE_EPOCHS = 200
     TUNE_SPLIT  = 0.2
 
@@ -289,6 +289,7 @@ plt.savefig(cfg.ADS_CURVE_PATH, dpi=300, bbox_inches="tight")
 plt.close(fig)
 print("[OK] Curva salva em:", cfg.ADS_CURVE_PATH)
 
-#=================================================================================#
-#                Porta que roda o dash board http://localhost:8080                #
-#=================================================================================#
+#=======================================================================================#
+#                   Porta que roda o dash board http://localhost:8080                   #
+# Ou Open With... no .db mas pra isso precisa da extenção do Optuna DashBoard Instalada #
+#=======================================================================================#

@@ -47,6 +47,14 @@ tuning_logs/
 LATEST.txt
 TREE_clean.txt
 
+# Exceções — arquivos importantes para o artigo
+!outputs/
+!outputs/adsorption/
+!outputs/adsorption/training/
+!outputs/adsorption/training/optuna/
+!outputs/adsorption/training/optuna/subsets/
+!outputs/adsorption/training/optuna/subsets/experiments_log.jsonl
+
 ############################################
 # RESULTADOS DE TREINAMENTOS / PREDIÇÕES
 ############################################

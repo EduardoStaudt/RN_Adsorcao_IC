@@ -26,6 +26,12 @@ PROCESSED_DIR = DATA_DIR / "processed"
 ADS_PROCESSED = PROCESSED_DIR / "adsorption"
 NU_PROCESSED = PROCESSED_DIR / "nu_uvec"
 
+## SUBSETS
+SUBSETS_DIR = DATA_DIR / "newdataset" / "SubSets"
+ADS_SUB_1000  = SUBSETS_DIR / "dataset_optuna_1000.csv"
+ADS_SUB_10000 = SUBSETS_DIR / "dataset_optuna_10000.csv"
+ADS_SUB_50000 = SUBSETS_DIR / "dataset_optuna_50000.csv"
+
 ADS_FULL_CSV = ADS_PROCESSED / "dataset_FULL.csv"
 ADS_FULL_NPZ = ADS_PROCESSED / "dataset_FULL.npz"
 
