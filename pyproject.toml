@@ -3,7 +3,7 @@ name = "rn-adsorcao-ic"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11,<3.13"
 dependencies = [
     "flask>=3.0",
     "flask-cors>=4.0",
@@ -17,5 +17,6 @@ dependencies = [
     "numpy>=1.26",
     "pandas>=2.2",
     "scikit-learn>=1.4",
-    "tensorflow>=2.20,<3",
+    "tensorflow==2.16.2",
+    "tensorflow-metal==1.2.0",
 ]

@@ -110,7 +110,7 @@ print("[INFO] X_raw:", X_raw.shape)
 print("[INFO] Y_raw:", Y_raw.shape)
 
 # =======================================================
-# 4) Normalização Z-score
+# 4) Normalização Z-score #REVISAR #############################################
 # =======================================================
 scaler_X = StandardScaler().fit(X_raw)
 scaler_Y = StandardScaler().fit(Y_raw)
@@ -172,7 +172,7 @@ RUN_ID = cfg.now_tag()
 if use_optuna:
     print("[INFO] Optuna -> MedianPruner + study")
 
-    N_TRIALS    = 64
+    N_TRIALS    = 64 # 2^6
     TUNE_EPOCHS = 200
     TUNE_SPLIT  = 0.2
 
@@ -194,8 +194,8 @@ if use_optuna:
                 raise optuna.TrialPruned()
 
     def optuna_objective(trial):
-        n_layers   = trial.suggest_int("n_layers", 2, 4)
-        n_units    = trial.suggest_int("n_units", 64, 256, step=32)
+        n_layers   = trial.suggest_int("n_layers", 2, 4) #
+        n_units    = trial.suggest_int("n_units", 64, 256, step=32) # 
         activation = trial.suggest_categorical("activation", ["relu", "elu"])
         dropout    = trial.suggest_float("dropout", 0.0, 0.2, step=0.05)
         l2_reg     = trial.suggest_float("l2_reg", 1e-6, 1e-3, log=True)
