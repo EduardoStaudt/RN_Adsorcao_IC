@@ -291,8 +291,8 @@ def main():
             sys.exit(1)
 
     out_dir   = cfg.ADS_OUT_OPTUNA / "subsets"
-    log_path  = out_dir / "experiments_log.jsonl"
-    global_db = out_dir / "optuna_global.db"
+    log_path  = cfg.ADS_OUT_OPTUNA / "experiments_log.jsonl"
+    global_db = cfg.ADS_OUT_OPTUNA / "optuna_global.db"
     out_dir.mkdir(parents=True, exist_ok=True)
 
     results = []
@@ -324,7 +324,7 @@ def main():
         total = sum(r["elapsed_s"] for r in results)
         print(f"\n[TEMPO] {parts} | TOTAL: {total:.1f}s")
 
-        summary_path = out_dir / "comparison_summary.json"
+        summary_path = cfg.ADS_OUT_OPTUNA / "comparison_summary.json"
         summary_path.write_text(
             json.dumps(results, indent=2, ensure_ascii=False), encoding="utf-8"
         )

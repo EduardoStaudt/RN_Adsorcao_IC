@@ -1,6 +1,7 @@
 import json
 import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import optuna
@@ -215,8 +216,14 @@ if use_optuna:
         )
         return min(hist.history.get("val_rmse", [float("inf")]))
 
-    pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=10)
-    _db_uri = (cfg.ADS_OUT_OPTUNA / "optuna_adsorption.db").as_posix()
+    _df_dir      = cfg.ADS_OUT_OPTUNA / "datafull"
+    _df_existing = sorted(_df_dir.glob("run_[0-9][0-9][0-9]_*")) if _df_dir.exists() else []
+    _df_run_id   = f"run_{len(_df_existing) + 1:03d}_{datetime.now().strftime('%Y%m%d')}"
+    _df_run      = _df_dir / _df_run_id
+    (_df_run / "plots").mkdir(parents=True, exist_ok=True)
+
+    pruner  = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=10)
+    _db_uri = (_df_dir / "datafull.db").as_posix()
     storage = optuna.storages.RDBStorage(f"sqlite:///{_db_uri}")
     study = optuna.create_study(
         direction="minimize",
@@ -231,18 +238,19 @@ if use_optuna:
     try:
         import optuna.visualization as vis
         vis.plot_optimization_history(study).write_html(
-            str(cfg.ADS_OUT_OPTUNA / "opt_history.html"))
+            str(_df_run / "plots" / "opt_history.html"))
         vis.plot_param_importances(study).write_html(
-            str(cfg.ADS_OUT_OPTUNA / "param_importance.html"))
+            str(_df_run / "plots" / "param_importance.html"))
         vis.plot_parallel_coordinate(study).write_html(
-            str(cfg.ADS_OUT_OPTUNA / "parallel_coord.html"))
-        print("[OK] Gráficos Optuna salvos em:", cfg.ADS_OUT_OPTUNA)
+            str(_df_run / "plots" / "parallel_coord.html"))
+        print("[OK] Gráficos Optuna salvos em:", _df_run / "plots")
     except Exception as e:
         print(f"[AVISO] Não foi possível gerar gráficos Optuna: {e}")
 
     best = study.best_params
     print("[INFO] Best HP:", best)
     cfg.ADS_BEST_HP.write_text(json.dumps(best, indent=2), encoding="utf-8")
+    (_df_run / "best_hp_full.json").write_text(json.dumps(best, indent=2), encoding="utf-8")
     model = build_model(**best)
 else:
     print("[INFO] Sem Optuna -> arquitetura fixa")
