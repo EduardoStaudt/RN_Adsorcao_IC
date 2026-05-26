@@ -141,7 +141,7 @@ print("[OK] Salvei scalers e meta em:", cfg.ADS_MODELS_DIR)
 input_dim = X.shape[1]
 output_dim = Y.shape[1]
 
-def build_model(n_layers=3, n_units=352, activation="elu", dropout=0.10, l2_reg=1e-5, lr=5e-4):
+def build_model(n_layers=4, n_units=192, activation="elu", dropout=0.0, l2_reg=1.1377805739677371e-06, lr=0.003583059044480766):
     reg = tf.keras.regularizers.l2(l2_reg)
     layers = [tf.keras.layers.Input(shape=(input_dim,))]
     for _ in range(n_layers):
@@ -164,7 +164,7 @@ def build_model(n_layers=3, n_units=352, activation="elu", dropout=0.10, l2_reg=
 # USE_OPTUNA = True  -> roda busca de HPs com MedianPruner
 # USE_OPTUNA = False -> usa arquitetura fixa (build_model padrão)
 # =======================================================
-USE_OPTUNA = True
+USE_OPTUNA = False
 use_optuna = USE_OPTUNA
 
 RUN_ID = cfg.now_tag()
@@ -246,6 +246,17 @@ if use_optuna:
         print("[OK] Gráficos Optuna salvos em:", _df_run / "plots")
     except Exception as e:
         print(f"[AVISO] Não foi possível gerar gráficos Optuna: {e}")
+
+    # CSV de trials Optuna (para análise estatística)
+    _trials_csv = cfg.ADS_OUT_OPTUNA_CSV / f"trials_datafull_{_df_run_id}.csv"
+    _trials_rows = [
+        {"trial_number": t.number, "state": t.state.name,
+         "val_rmse": t.value if t.value is not None else float("nan"),
+         **t.params}
+        for t in study.trials
+    ]
+    pd.DataFrame(_trials_rows).to_csv(_trials_csv, index=False, encoding="utf-8")
+    print("[OK] CSV de trials salvo em:", _trials_csv)
 
     best = study.best_params
     print("[INFO] Best HP:", best)

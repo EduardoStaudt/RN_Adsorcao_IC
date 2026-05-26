@@ -198,6 +198,17 @@ def run_optuna_for_subset(name: str, path: Path, n_trials: int, tune_epochs: int
     except Exception as e:
         print(f"[AVISO] Não foi possível gerar gráficos: {e}")
 
+    # CSV de trials (para análise estatística)
+    trials_csv = cfg.ADS_OUT_OPTUNA_CSV / f"trials_{name}_{run_id}.csv"
+    trials_rows = [
+        {"trial_number": t.number, "state": t.state.name,
+         "val_rmse": t.value if t.value is not None else float("nan"),
+         **t.params}
+        for t in study.trials
+    ]
+    pd.DataFrame(trials_rows).to_csv(trials_csv, index=False, encoding="utf-8")
+    print(f"[OK] CSV de trials salvo em: {trials_csv}")
+
     result = {
         "run_id":        run_id,
         "subset":        name,

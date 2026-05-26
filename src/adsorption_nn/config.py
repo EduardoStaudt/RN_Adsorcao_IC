@@ -86,6 +86,7 @@ ADS_OUT_DIR = OUT_DIR / "adsorption"
 ADS_OUT_TRAIN = ADS_OUT_DIR / "training"
 ADS_OUT_INFER = ADS_OUT_DIR / "inference"
 ADS_OUT_OPTUNA = ADS_OUT_TRAIN / "optuna"
+ADS_OUT_OPTUNA_CSV = ADS_OUT_OPTUNA / "trials_csv"
 ADS_CURVE_PATH = ADS_OUT_TRAIN / "curva_treinamento.png"
 
 # Nu/Uvec
@@ -115,6 +116,7 @@ def ensure_dirs() -> None:
     ADS_OUT_TRAIN.mkdir(parents=True, exist_ok=True)
     ADS_OUT_INFER.mkdir(parents=True, exist_ok=True)
     ADS_OUT_OPTUNA.mkdir(parents=True, exist_ok=True)
+    ADS_OUT_OPTUNA_CSV.mkdir(parents=True, exist_ok=True)
 
     NU_OUT_TRAIN.mkdir(parents=True, exist_ok=True)
     NU_OUT_INFER.mkdir(parents=True, exist_ok=True)

@@ -35,17 +35,40 @@ inference/
     predictor.py      ← API de inferência (AdsorptionPredictor)
 scripts/
     clean_invalid_seeds.py  ← limpeza de seeds com N_ads_final ≈ 0
+    tune_subsets.py         ← busca Optuna nos 3 subsets + log acumulativo
 data/
     processed/adsorption/dataset_FULL.csv     ← 993.507 linhas após limpeza  →  cfg.ADS_FULL_CSV
     newdataset/SubSets/dataset_optuna_1000.csv   ← 995 linhas    →  cfg.ADS_SUB_1000
     newdataset/SubSets/dataset_optuna_10000.csv  ← 9.943 linhas  →  cfg.ADS_SUB_10000
     newdataset/SubSets/dataset_optuna_50000.csv  ← 49.721 linhas →  cfg.ADS_SUB_50000
 models/adsorption/
-    best_model.keras, scaler_input.save, scaler_output.save
-    model_meta.json, best_hp.json
-outputs/adsorption/training/optuna/
-    optuna_adsorption.db   ← banco SQLite do Optuna (gerado ao rodar com USE_OPTUNA=True)
-    opt_history.html, param_importance.html, parallel_coord.html
+    best_model.keras       ← carregado pelo gui_flet.py automaticamente
+    scaler_input.save
+    scaler_output.save
+    model_meta.json
+    best_hp.json           ← cópia dos melhores HPs do último treino full
+outputs/adsorption/training/
+    curva_treinamento.png  ← gerada pela seção 8 do train.py
+    optuna/
+        datafull/
+            run_001_20260525/        ← criado a cada execução do train.py (USE_OPTUNA=True)
+                plots/
+                    opt_history.html
+                    param_importance.html
+                    parallel_coord.html
+                best_hp_full.json
+            datafull.db              ← DB Optuna acumulativo do dataset full
+        subsets/
+            sub_1000/
+                run_001_20260525/
+                    plots/
+                    best_hp_sub_1000.json
+                sub_1000.db          ← DB Optuna acumulativo do subset 1000
+            sub_10000/  (idem)
+            sub_50000/  (idem)
+        comparison_summary.json      ← sobrescrito a cada sessão do tune_subsets.py
+        experiments_log.jsonl        ← log acumulativo global (nunca sobrescrito)
+        optuna_global.db             ← best trial de cada subset registrado aqui
 ```
 
 ---
@@ -63,15 +86,24 @@ outputs/adsorption/training/optuna/
 
 ## Otimização de hiperparâmetros (Optuna)
 
-Substituiu o keras_tuner na seção 6 do `train.py`. Configuração atual:
+### No `train.py` (dataset full)
 
-- **Flag:** `USE_OPTUNA = True` (linha ~166) — mudar para `False` para treinar com arquitetura fixa
-- **Trials:** 64 (2^6 — um por HP) | **Epochs por trial:** 200 | **Pruner:** MedianPruner (n_startup=5, warmup=10)
-- **Storage:** SQLite em `outputs/adsorption/training/optuna/optuna_adsorption.db`
-- **Dashboard em tempo real:** `optuna-dashboard sqlite:///outputs/adsorption/training/optuna/optuna_adsorption.db` → `http://localhost:8080`
-- **Gráficos HTML** gerados automaticamente após o optimize (opt_history, param_importance, parallel_coord)
+- **Flag:** `USE_OPTUNA = True` (linha ~167) — mudar para `False` para treinar com arquitetura fixa
+- **Trials:** 64 | **Epochs por trial:** 200 | **Pruner:** MedianPruner (n_startup=5, warmup=10)
+- **DB acumulativo:** `outputs/adsorption/training/optuna/datafull/datafull.db`
+- **Run incremental:** a cada execução cria `datafull/run_XXX_YYYYMMDD/` com plots e `best_hp_full.json`
+- **Dashboard:** `optuna-dashboard sqlite:///outputs/adsorption/training/optuna/datafull/datafull.db`
 
-**Espaço de busca atual:**
+### No `tune_subsets.py` (subsets)
+
+- Mesmo espaço de busca, mesma `build_model`, mesmo MedianPruner
+- **DB por subset:** `subsets/sub_{name}/sub_{name}.db` (acumulativo)
+- **DB global:** `optuna_global.db` — apenas o best trial de cada subset via `add_trial(study.best_trial)`
+- **Run incremental:** `subsets/sub_{name}/run_XXX_YYYYMMDD/` com plots e `best_hp_sub_{name}.json`
+- **Log acumulativo:** `experiments_log.jsonl` — nunca sobrescrito, uma linha JSON por execução
+- **Sumário da sessão:** `comparison_summary.json` — sobrescrito a cada sessão
+
+**Espaço de busca atual (idêntico em train.py e tune_subsets.py):**
 | HP | Tipo | Range |
 |---|---|---|
 | n_layers | int | 2 – 4 |
@@ -80,6 +112,14 @@ Substituiu o keras_tuner na seção 6 do `train.py`. Configuração atual:
 | dropout | float | 0.0 – 0.2 (step 0.05) |
 | l2_reg | float log | 1e-6 – 1e-3 |
 | lr | float log | 1e-4 – 1e-2 |
+
+**Comandos do tune_subsets.py:**
+```bash
+python scripts/tune_subsets.py                          # todos os subsets, 64 trials, 200 épocas
+python scripts/tune_subsets.py --subset 1000            # só subset 1000
+python scripts/tune_subsets.py --subset 10000,50000     # dois subsets
+python scripts/tune_subsets.py --n-trials 5 --epochs 30 --subset 1000  # teste rápido
+```
 
 ---
 
@@ -105,6 +145,20 @@ import adsorption_nn.config as cfg
 # cfg.ADS_FULL_CSV   → dataset_FULL.csv          (993.507 linhas)
 ```
 Nunca hardcodar caminhos de dataset — centralizado em `src/adsorption_nn/config.py`.
+
+---
+
+## GPU / CUDA (RTX 2060 + Windows)
+
+**TensorFlow 2.20 não suporta GPU nativamente no Windows** (suporte encerrado no TF 2.11).
+Para usar a GPU é obrigatório usar **WSL2**.
+
+- Driver NVIDIA no Windows (host): ≥ 527.41
+- CUDA Toolkit (dentro do WSL2): 12.3
+- cuDNN (dentro do WSL2): 9.x
+- **Nenhuma alteração de código necessária** — TF detecta a GPU automaticamente
+
+Sem WSL2, o treino roda na CPU (funciona, mas muito mais lento — 64 trials × 200 épocas é pesado).
 
 ---
 
@@ -145,20 +199,34 @@ flask>=3.0
 - Gráficos HTML gerados automaticamente pós-optimize
 - `optuna`, `optuna-dashboard`, `plotly` adicionados ao `pyproject.toml`
 
+**TAREFA 3 — Optuna nos mini datasets (`tune_subsets.py`)**
+- Criado `scripts/tune_subsets.py` completamente separado do `train.py`
+- Itera sobre os 3 subsets (1000, 10000, 50000) via `cfg.ADS_SUB_*`
+- Mesmo espaço de busca, `build_model` e callbacks do `train.py`
+- Estrutura de pastas incremental: `subsets/sub_{name}/run_XXX_YYYYMMDD/plots/`
+- DB acumulativo por subset: `sub_{name}/sub_{name}.db`
+- DB global com best trial: `optuna_global.db` via `study_global.add_trial(study.best_trial)`
+- Tabela comparativa de HPs impressa ao final + `comparison_summary.json`
+- Print de tempo: `[TEMPO] sub_1000: Xs | sub_10000: Ys | TOTAL: Zs`
+
+**TAREFA 4 — Laboratório de experimentos (log acumulativo)**
+- Integrado ao `tune_subsets.py` — arquivo `experiments_log.jsonl` na raiz de `optuna/`
+- Campos por linha: `run_id`, `subset`, `n_rows`, `n_trials`, `tune_epochs`, `best_val_rmse`, `elapsed_s`, `best_params`, `db_path`
+- Nunca sobrescrito — append a cada execução (acumulativo entre runs)
+
+**TAREFA 5 — Estrutura de pastas do train.py (datafull)**
+- `train.py` agora cria `outputs/adsorption/training/optuna/datafull/run_XXX_YYYYMMDD/`
+- DB acumulativo do full em `datafull/datafull.db`
+- Plots HTML em `datafull/run_XXX/plots/`
+- Cópia dos best HPs em `datafull/run_XXX/best_hp_full.json`
+- Mudanças no `train.py`: apenas `from datetime import datetime` + 5 linhas na seção 6 (Optuna)
+- `build_model`, treino final (seção 7), curva (seção 8) e scalers: **inalterados**
+
 ---
 
 ### 🔲 PENDENTES
 
-**TAREFA 3 — Testar Optuna nos mini datasets (`tune_subsets.py`)**
-- Criar `scripts/tune_subsets.py` separado do `train.py`
-- Para cada subset em `data/newdataset/SubSets/`: rodar Optuna, salvar melhores HPs em JSON identificado pelo nome do subset
-- Ao final, gerar tabela comparando os melhores HPs entre os subsets
-- Objetivo: verificar se os HPs variam com o tamanho do dataset
-
-**TAREFA 4 — Laboratório de experimentos (log CSV/JSON)**
-- Para cada execução registrar: nome do subset, tamanho, melhores HPs, melhor val_rmse, tempo de busca
-- Arquivo de log acumulativo (CSV ou JSON Lines)
-- Servirá de base para o artigo científico
+*(sem tarefas pendentes no momento)*
 
 ---
 
