@@ -91,8 +91,8 @@ if not OUTPUT_COLS:
     OUTPUT_COLS = FINAL_COLS + (
         [f"C_z{i}" for i in range(BLOCK_SIZE)] +
         [f"q_z{i}" for i in range(BLOCK_SIZE)] +
-        [f"T_z{i}" for i in range(BLOCK_SIZE)] +
-        [f"Qtot_t{i}" for i in range(BLOCK_SIZE)]
+        [f"T_z{i}" for i in range(BLOCK_SIZE)]
+        # ["Qtot_final"] # tirei o for de plot
     )
 
 LABELS = {
@@ -130,7 +130,7 @@ def b64_png(fig) -> str:
 
 
 def gerar_grafico(x, y_pred, titulo, eixo_x, eixo_y, y_true=None):
-    fig, ax = plt.subplots(figsize=(3.4, 2)) # 4.6, 3.2 original
+    fig, ax = plt.subplots(figsize=(4.6, 3.2)) # 3.4, 2 CNMAC
     if y_true is not None:
         ax.plot(x, y_true, label="true")
     ax.plot(x, y_pred, label="pred")
@@ -142,16 +142,22 @@ def gerar_grafico(x, y_pred, titulo, eixo_x, eixo_y, y_true=None):
     ax.legend()
     return b64_png(fig)
 
+def sumQtot_final(qz: np.ndarray, L: float, D_col: float, rho_B: float) -> float:
+    qz = np.asarray(qz, dtype=float).reshape(-1)
+    z = np.linspace(0.0, float(L), qz.size)
+    A = np.pi * (float(D_col) ** 2) / 4.0
+    integral = np.trapezoid(qz, z) if hasattr(np, "trapezoid") else np.trapz(qz, z)
+    return float(A * float(rho_B) * integral)
 
-def split_208(y_vec: np.ndarray):
+
+def split_157(y_vec: np.ndarray):
     y_vec = np.asarray(y_vec, dtype=float).reshape(-1)
     finals = y_vec[0:4]
     Cz = y_vec[4:4 + BLOCK_SIZE]
     qz = y_vec[4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE]
     Tz = y_vec[4 + 2 * BLOCK_SIZE:4 + 3 * BLOCK_SIZE]
-    Qt = y_vec[4 + 3 * BLOCK_SIZE:4 + 4 * BLOCK_SIZE]
-    return finals, Cz, qz, Tz, Qt
-
+    # qtot_final = float(y_vec[4 + 3 * BLOCK_SIZE])
+    return finals, Cz, qz, Tz # qtot_final
 
 # -----------------------------------------------------------------------------
 # LATEST: aceita path absoluto OU relativo ao ROOT
@@ -276,7 +282,7 @@ scaler_out = joblib.load(SCALER_OUT_PATH)
 
 
 def main(page: ft.Page):
-    page.title = "Predição - Adsorção (22 -> 208)"
+    page.title = "Predição - Adsorção (22 -> 157)"
     page.scroll = "always"
     page.window.width = 1500
     page.window.height = 930
@@ -284,12 +290,12 @@ def main(page: ft.Page):
     CARD_BG = "#151a1f"
     GREEN_ACTIVE = ft.Colors.GREEN_700
     BTN_H = 52
-    INPUT_W = 230 # 220
-    CARD_H = 350  # 455
+    INPUT_W = 220 # 230
+    CARD_H = 455  # 350
 
     dataset_available = DATA_NPZ_PATH.exists() or DATA_CSV_PATH.exists()
 
-    true_state = {"has_true": False, "idx": None, "y_true": None}
+    true_state = {"has_true": False, "idx": None, "x_true": None, "y_true": None}
     random_state = {"order": None, "pos": 0}
 
     # defaults alinhados com PARAM_COLS
@@ -302,8 +308,8 @@ def main(page: ft.Page):
                 label=LABELS.get(nome, nome),
                 value=str(valor).replace(".", ","),
                 width=INPUT_W,
-                text_size=21,
-                label_style=ft.TextStyle(size=16),
+                text_size=18, # 21
+                label_style=ft.TextStyle(size=14), # 16
             )
         )
 
@@ -340,12 +346,14 @@ def main(page: ft.Page):
             set_inputs_from_x(x)
             true_state["has_true"] = True
             true_state["idx"] = idx
+            true_state["x_true"] = x
             true_state["y_true"] = y
             status_true.value = f"TRUE: carregado (idx={idx})"
             status_true.color = "green"
         except Exception as err:
             true_state["has_true"] = False
             true_state["idx"] = None
+            true_state["x_true"] = None
             true_state["y_true"] = None
             status_true.value = f"TRUE: erro -> {err}"
             status_true.color = "red"
@@ -369,12 +377,14 @@ def main(page: ft.Page):
             set_inputs_from_x(x)
             true_state["has_true"] = True
             true_state["idx"] = idx
+            true_state["x_true"] = x
             true_state["y_true"] = y
             status_true.value = f"TRUE: carregado (idx={idx})"
             status_true.color = "green"
         except Exception as err:
             true_state["has_true"] = False
             true_state["idx"] = None
+            true_state["x_true"] = None
             true_state["y_true"] = None
             status_true.value = f"TRUE: erro -> {err}"
             status_true.color = "red"
@@ -387,7 +397,7 @@ def main(page: ft.Page):
     img_C = ft.Image(src=PLACEHOLDER_SRC, width=470)
     img_q = ft.Image(src=PLACEHOLDER_SRC, width=470)
     img_T = ft.Image(src=PLACEHOLDER_SRC, width=470)
-    img_Q = ft.Image(src=PLACEHOLDER_SRC, width=470)
+    qtot_text = ft.Text("Qtot_final: -", size=20, weight=ft.FontWeight.BOLD)
 
     res_lines = {c: ft.Text(f"{c}: -", size=16) for c in FINAL_COLS}
 
@@ -456,20 +466,36 @@ def main(page: ft.Page):
         try:
             valores = [float(c.value.replace(",", ".")) for c in campos]
             X = np.array(valores, dtype=float).reshape(1, -1)
+
             expected = int(getattr(scaler_in, "n_features_in_", X.shape[1]))
             if X.shape[1] != expected:
                 raise ValueError(f"Scaler espera {expected} features, mas recebeu {X.shape[1]}.")
+
             Xn = scaler_in.transform(X)
             y_norm = model.predict(Xn, verbose=0)
             y_pred = scaler_out.inverse_transform(y_norm).reshape(-1)
 
             y_true_vec = true_state["y_true"] if true_state["has_true"] else None
-            finals_pred, Cz_pred, qz_pred, Tz_pred, Qt_pred = split_208(y_pred)
+            x_true_vec = true_state["x_true"] if true_state["has_true"] else None
 
-            if y_true_vec is not None:
-                finals_true, Cz_true, qz_true, Tz_true, Qt_true = split_208(y_true_vec)
+            finals_pred, Cz_pred, qz_pred, Tz_pred = split_157(y_pred)
+
+            L_pred = float(X[0, PARAM_COLS.index("L")])
+            Dcol_pred = float(X[0, PARAM_COLS.index("D_col")])
+            rhoB_pred = float(X[0, PARAM_COLS.index("rho_B")])
+            qtot_pred = sumQtot_final(qz_pred, L=L_pred, D_col=Dcol_pred, rho_B=rhoB_pred)
+
+            if y_true_vec is not None and x_true_vec is not None:
+                finals_true, Cz_true, qz_true, Tz_true = split_157(y_true_vec)
+
+                L_true = float(x_true_vec[PARAM_COLS.index("L")])
+                Dcol_true = float(x_true_vec[PARAM_COLS.index("D_col")])
+                rhoB_true = float(x_true_vec[PARAM_COLS.index("rho_B")])
+
+                qtot_true = sumQtot_final(qz_true, L=L_true, D_col=Dcol_true, rho_B=rhoB_true)
             else:
-                finals_true = Cz_true = qz_true = Tz_true = Qt_true = None
+                finals_true = Cz_true = qz_true = Tz_true = None
+                qtot_true = None
 
             for i, name in enumerate(FINAL_COLS):
                 if finals_true is not None:
@@ -478,20 +504,42 @@ def main(page: ft.Page):
                     res_lines[name].value = f"{name}: pred={finals_pred[i]:.6g}"
 
             x_leito = np.arange(BLOCK_SIZE)
-            x_tempo = np.arange(1, len(y_true_vec), len(y_true_vec)/BLOCK_SIZE) if y_true_vec is not None else np.arange(BLOCK_SIZE)
 
-            img_C.src = gerar_grafico(x_leito, Cz_pred, "C(z)", eixo_x="z (posição no leito)", eixo_y="C (mol/m³)", y_true=Cz_true)
-            img_q.src = gerar_grafico(x_leito, qz_pred, "q(z)", eixo_x="z (posição no leito)", eixo_y="q (mol/kg)", y_true=qz_true)
-            img_T.src = gerar_grafico(x_leito, Tz_pred, "T(z)", eixo_x="z (posição no leito)", eixo_y="T (K)", y_true=Tz_true)
-            img_Q.src = gerar_grafico(x_tempo, Qt_pred, "Qtot(t)", eixo_x="t (tempo)", eixo_y="Qtot (mol)", y_true=Qt_true)
+            img_C.src = gerar_grafico(
+                x_leito, Cz_pred, "C(z)",
+                eixo_x="z (posição no leito)",
+                eixo_y="C (mol/m³)",
+                y_true=Cz_true
+            )
+
+            img_q.src = gerar_grafico(
+                x_leito, qz_pred, "q(z)",
+                eixo_x="z (posição no leito)",
+                eixo_y="q (mol/kg)",
+                y_true=qz_true
+            )
+
+            img_T.src = gerar_grafico(
+                x_leito, Tz_pred, "T(z)",
+                eixo_x="z (posição no leito)",
+                eixo_y="T (K)",
+                y_true=Tz_true
+            )
+
+            if qtot_true is not None:
+                qtot_text.value = f"Qtot_final(calculado): true={qtot_true:.6g} | pred={qtot_pred:.6g}"
+            else:
+                qtot_text.value = f"Qtot_final(calculado): pred={qtot_pred:.6g}"
 
             status_run.value = "Predição realizada com sucesso."
             status_run.color = "green"
             set_run_button_state("ok")
+
         except Exception as err:
             status_run.value = f"Erro: {err}"
             status_run.color = "red"
             set_run_button_state("err")
+
         page.update()
 
     btn_run.on_click = rodar_modelo
@@ -499,16 +547,18 @@ def main(page: ft.Page):
 
     graphs_view = ft.Column(
         [
-            ft.Text("Gráficos (TRUE vs PRED)", size=35, weight=ft.FontWeight.BOLD),
+            ft.Text("Gráficos (TRUE vs PRED)", size=25, weight=ft.FontWeight.BOLD),
             ft.Row([img_C, img_q], wrap=True, spacing=14),
-            ft.Row([img_T, img_Q], wrap=True, spacing=14),
+            ft.Row([img_T], wrap=True, spacing=14),
+            ft.Divider(height=10),
+            qtot_text,
         ],
-        spacing=4, # 10
+        spacing=10, # 4
     )
 
     results_view = ft.Column(
         [
-            ft.Text("Resultados numéricos", size=35, weight=ft.FontWeight.BOLD),
+            ft.Text("Resultados numéricos", size=25, weight=ft.FontWeight.BOLD),
             ft.Text("Finais (true | pred) quando TRUE estiver carregado.", size=12, color="grey"),
             ft.Divider(height=8),
             res_lines[FINAL_COLS[0]],
@@ -521,7 +571,7 @@ def main(page: ft.Page):
 
     validations_view = ft.Column(
         [
-            ft.Text("Validações (sem precisar do dataset)", size=35, weight=ft.FontWeight.BOLD),
+            ft.Text("Validações (sem precisar do dataset)", size=25, weight=ft.FontWeight.BOLD),
             ft.Row(
                 [
                     method_dd,
@@ -540,14 +590,14 @@ def main(page: ft.Page):
 
     content_holder = ft.Container(content=graphs_view, padding=10, expand=True)
 
-    b_g = ft.Button("Gráficos", width=220, height=55, style=ft.ButtonStyle(
-        text_style=ft.TextStyle(size=25, weight=ft.FontWeight.BOLD)
+    b_g = ft.Button("Gráficos", width=180, height=46, style=ft.ButtonStyle(
+        text_style=ft.TextStyle(size=20, weight=ft.FontWeight.BOLD)
     ))
-    b_r = ft.Button("Resultados", width=220, height=55, style=ft.ButtonStyle(
-        text_style=ft.TextStyle(size=25, weight=ft.FontWeight.BOLD)
+    b_r = ft.Button("Resultados", width=180, height=46, style=ft.ButtonStyle(
+        text_style=ft.TextStyle(size=20, weight=ft.FontWeight.BOLD)
     ))
-    b_v = ft.Button("Validações", width=220, height=55, style=ft.ButtonStyle(
-        text_style=ft.TextStyle(size=25, weight=ft.FontWeight.BOLD)
+    b_v = ft.Button("Validações", width=180, height=46, style=ft.ButtonStyle(
+        text_style=ft.TextStyle(size=20, weight=ft.FontWeight.BOLD)
     ))
 
     def set_sidebar_active(btn: ft.Button, active: bool):
@@ -578,7 +628,7 @@ def main(page: ft.Page):
     sidebar = ft.Container(
         content=ft.Column(
             [
-                ft.Text("Painel", size=40, weight=ft.FontWeight.BOLD),
+                ft.Text("Painel", size=30, weight=ft.FontWeight.BOLD),
                 ft.Divider(height=8),
                 b_g, b_r, b_v,
             ],
@@ -612,14 +662,14 @@ def main(page: ft.Page):
 
     actions_content = ft.Column(
         [
-            ft.Text("Ações", size=40, weight=ft.FontWeight.BOLD),#30
+            ft.Text("Ações", size=30, weight=ft.FontWeight.BOLD),#30
             idx_field,
             ft.Row([btn_rand], alignment="center"),
             ft.Row([btn_load], alignment="center"),
-            #ft.Divider(22),
-            #status_true,
-            #status_run,
-            #ft.Divider(height=22),
+            ft.Divider(22),
+            status_true,
+            status_run,
+            ft.Divider(height=22),
             ft.Row([btn_run], alignment="center"),
             ft.Container(height=8),
         ],
@@ -639,7 +689,7 @@ def main(page: ft.Page):
     inputs_card = ft.Container(
         content=ft.Column(
             [
-                ft.Text("Entradas do modelo (22 parâmetros)", size=40, weight=ft.FontWeight.BOLD),
+                ft.Text("Entradas do modelo (22 parâmetros)", size=30, weight=ft.FontWeight.BOLD),
                 ft.Row(campos, wrap=True, spacing=12, run_spacing=12),
             ],
             spacing=10,

@@ -26,6 +26,12 @@ PROCESSED_DIR = DATA_DIR / "processed"
 ADS_PROCESSED = PROCESSED_DIR / "adsorption"
 NU_PROCESSED = PROCESSED_DIR / "nu_uvec"
 
+## SUBSETS
+SUBSETS_DIR = DATA_DIR / "newdataset" / "SubSets"
+ADS_SUB_1000  = SUBSETS_DIR / "dataset_optuna_1000.csv"
+ADS_SUB_10000 = SUBSETS_DIR / "dataset_optuna_10000.csv"
+ADS_SUB_50000 = SUBSETS_DIR / "dataset_optuna_50000.csv"
+
 ADS_FULL_CSV = ADS_PROCESSED / "dataset_FULL.csv"
 ADS_FULL_NPZ = ADS_PROCESSED / "dataset_FULL.npz"
 
@@ -79,7 +85,8 @@ OUT_DIR = ROOT / "outputs"
 ADS_OUT_DIR = OUT_DIR / "adsorption"
 ADS_OUT_TRAIN = ADS_OUT_DIR / "training"
 ADS_OUT_INFER = ADS_OUT_DIR / "inference"
-ADS_OUT_TUNER = ADS_OUT_TRAIN / "tuner"
+ADS_OUT_OPTUNA = ADS_OUT_TRAIN / "optuna"
+ADS_OUT_OPTUNA_CSV = ADS_OUT_OPTUNA / "trials_csv"
 ADS_CURVE_PATH = ADS_OUT_TRAIN / "curva_treinamento.png"
 
 # Nu/Uvec
@@ -108,7 +115,8 @@ def ensure_dirs() -> None:
 
     ADS_OUT_TRAIN.mkdir(parents=True, exist_ok=True)
     ADS_OUT_INFER.mkdir(parents=True, exist_ok=True)
-    ADS_OUT_TUNER.mkdir(parents=True, exist_ok=True)
+    ADS_OUT_OPTUNA.mkdir(parents=True, exist_ok=True)
+    ADS_OUT_OPTUNA_CSV.mkdir(parents=True, exist_ok=True)
 
     NU_OUT_TRAIN.mkdir(parents=True, exist_ok=True)
     NU_OUT_INFER.mkdir(parents=True, exist_ok=True)

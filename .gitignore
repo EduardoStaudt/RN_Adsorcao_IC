@@ -47,6 +47,14 @@ tuning_logs/
 LATEST.txt
 TREE_clean.txt
 
+# Exceções — arquivos importantes para o artigo
+!outputs/
+!outputs/adsorption/
+!outputs/adsorption/training/
+!outputs/adsorption/training/optuna/
+!outputs/adsorption/training/optuna/subsets/
+!outputs/adsorption/training/optuna/subsets/experiments_log.jsonl
+
 ############################################
 # RESULTADOS DE TREINAMENTOS / PREDIÇÕES
 ############################################
@@ -66,6 +74,8 @@ compare_*.txt
 # raw: sempre fora do git
 data/raw/
 data/raw/**
+data/newdataset/
+data/newdataset/**
 
 # adsorption FULL: fora do git (vai via Drive)
 data/processed/adsorption/dataset_FULL.npz

@@ -55,42 +55,37 @@ FRONT_TO_MODEL_KEY = {
 
 FINAL_COLS = ["C_out_final", "q_out_final", "T_out_final", "N_ads_final"]
 
+# função que faz a soma do Qtot_final
+def sumQtot_final(qz: np.ndarray, L: float, D_col: float, rho_B: float) -> float:
+    qz = np.asarray(qz, dtype=float).reshape(-1)
+    z = np.linspace(0.0, float(L), qz.size)
+    A = np.pi * (float(D_col) ** 2) / 4.0
+    return float(A * float(rho_B) * np.trapezoid(qz, z))
 
-def _split_208(y_vec: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Divide o vetor (208,) em blocos.
-
-    índices:
-    - finais: 0..3
-    - C_z:    4..54
-    - q_z:    55..105
-    - T_z:    106..156
-    - Qtot_t: 157..207
-    """
+def _split_157(y_vec: np.ndarray): #-> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
     y_vec = y_vec.reshape(-1)
-    finals = y_vec[0:4]
-    Cz = y_vec[4:4 + BLOCK_SIZE]
-    qz = y_vec[4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE]
-    Tz = y_vec[4 + 2 * BLOCK_SIZE:4 + 3 * BLOCK_SIZE]
-    Qt = y_vec[4 + 3 * BLOCK_SIZE:4 + 4 * BLOCK_SIZE]
-    return finals, Cz, qz, Tz, Qt
+    finals = y_vec[0:4] # 4 primeiros
+    Cz = y_vec[4:4 + BLOCK_SIZE] # [4:55]
+    qz = y_vec[4 + BLOCK_SIZE:4 + 2 * BLOCK_SIZE] # [55:106]
+    Tz = y_vec[4 + 2 * BLOCK_SIZE:4 + 3 * BLOCK_SIZE] # [106:157]
+    # Qtot_final = sumQtot_final(qz, L=L, D_col=D_col, rho_B=rho_B)
+    # Qtot_final = float(y_vec[4 + 3 * BLOCK_SIZE]) # [157]
+    return finals, Cz, qz, Tz # Qtot_final
 
 
 def _as_float(x: Any) -> float:
-    """Converte valores vindos do JSON (numérico ou string) para float."""
     if isinstance(x, (int, float, np.number)):
         return float(x)
     if isinstance(x, str):
-        # aceita vírgula decimal
         return float(x.replace(",", ".").strip())
     raise TypeError(f"Valor inválido para número: {x!r} (type={type(x)})")
 
 
 class AdsorptionPredictor:
-    """Carrega modelo e scalers e executa predições."""
 
     def __init__(self, model_path: Optional[Path] = None,
-                 scaler_in_path: Optional[Path] = None,
-                 scaler_out_path: Optional[Path] = None) -> None:
+                scaler_in_path: Optional[Path] = None,
+                scaler_out_path: Optional[Path] = None) -> None:
         cfg.ensure_dirs()
 
         self.model_path = model_path or cfg.ADS_BEST_MODEL
@@ -106,22 +101,14 @@ class AdsorptionPredictor:
                 f"Scalers não encontrados em {self.scaler_in_path.parent}. Rode o treino."
             )
 
-        # Carrega uma vez (o backend mantém em memória)
         self.model = tf.keras.models.load_model(str(self.model_path), compile=False)
         self.scaler_in = joblib.load(self.scaler_in_path)
         self.scaler_out = joblib.load(self.scaler_out_path)
 
     def _normalize_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Aceita formatos:
-        - { ... } (flat)
-        - {"inputs": { ... }} (aninhado)
-
-        Ignora chaves extras (ex.: seed).
-        """
         if "inputs" in payload and isinstance(payload["inputs"], dict):
             payload = payload["inputs"]
 
-        # aplica aliases FRONT → MODEL (sem destruir as originais)
         normalized: Dict[str, Any] = dict(payload)
         for front_key, model_key in FRONT_TO_MODEL_KEY.items():
             if model_key not in normalized and front_key in normalized:
@@ -130,7 +117,6 @@ class AdsorptionPredictor:
         return normalized
 
     def _build_X(self, payload: Dict[str, Any]) -> np.ndarray:
-        """Monta o vetor X (1, 22) na ordem esperada pelo scaler/modelo."""
         payload = self._normalize_payload(payload)
 
         missing = [k for k in MODEL_INPUT_COLS if k not in payload]
@@ -150,30 +136,28 @@ class AdsorptionPredictor:
         return X
 
     def predict(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Executa a predição e devolve dict pronto para JSON."""
         X = self._build_X(payload)
 
-        # Pegamos t_end e L para construir eixos (t_points e z_points)
-        # Obs.: Mesmo que Nz venha diferente, o modelo atual prevê sempre BLOCK_SIZE pontos.
         payload_norm = self._normalize_payload(payload)
         L = _as_float(payload_norm.get("L"))
         t_end = _as_float(payload_norm.get("t_end"))
+        D_col = _as_float(payload_norm.get("D_col"))
+        rho_B = _as_float(payload_norm.get("rho_B"))
 
         Xn = self.scaler_in.transform(X)
         y_norm = self.model.predict(Xn, verbose=0)
         y = self.scaler_out.inverse_transform(y_norm).reshape(-1)
 
-        if y.shape[0] != 208:
-            raise ValueError(f"Modelo retornou {y.shape[0]} saídas, esperado 208.")
+        if y.shape[0] != 157:
+            raise ValueError(f"Modelo retornou {y.shape[0]} saídas, esperado 157.")
 
-        finals, Cz, qz, Tz, Qt = _split_208(y)
+        finals, Cz, qz, Tz = _split_157(y) # Qtot_final antes
 
-        # Eixos (sempre com 51 pontos no modelo atual)
+        Qtot_final = sumQtot_final(qz, L=L, D_col=D_col, rho_B=rho_B)
+
         t_points = np.linspace(0.0, t_end, BLOCK_SIZE)
         z_points = np.linspace(0.0, L, BLOCK_SIZE)
 
-        # Placeholder para breakthrough (até a RNA prever explicitamente C_out(t))
-        # Mantém compatibilidade com o FRONT.
         C_out_points = np.linspace(0.0, float(finals[0]), BLOCK_SIZE)
 
         result: Dict[str, Any] = {
@@ -181,10 +165,11 @@ class AdsorptionPredictor:
             "q_out_final": float(finals[1]),
             "T_out_final": float(finals[2]),
             "N_ads_final": float(finals[3]),
+            "Qtot_final": float(Qtot_final),
 
             "t_points": t_points.tolist(),
             "C_out_points": C_out_points.tolist(),
-            "Qtot_points": Qt.tolist(),
+            #"Qtot_points": Qt.tolist(),
 
             "z_points": z_points.tolist(),
             "C_z_points": Cz.tolist(),
@@ -195,7 +180,6 @@ class AdsorptionPredictor:
         return result
 
 
-# Singleton simples (carrega uma vez quando o módulo é importado)
 _PREDICTOR: Optional[AdsorptionPredictor] = None
 
 
