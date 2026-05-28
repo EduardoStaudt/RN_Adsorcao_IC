@@ -17,6 +17,7 @@ build/
 # AMBIENTES VITUAIS
 ############################################
 .venv/
+.venv311/
 venv/
 ENV/
 env/
@@ -46,6 +47,7 @@ tuning_logs/
 *.log
 LATEST.txt
 TREE_clean.txt
+
 
 # Exceções — arquivos importantes para o artigo
 !outputs/
